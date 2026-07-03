@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #f7f7f5;
+  --card: #ffffff;
+  --border: #e5e7eb;
+  --text: #111827;
+  --muted: #6b7280;
+}
+
+html, body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-1 disabled:opacity-50 disabled:pointer-events-none;
+  }
+  .btn-primary { @apply btn bg-brand-600 text-white hover:bg-brand-700; }
+  .btn-secondary { @apply btn bg-white border border-gray-300 text-gray-800 hover:bg-gray-50; }
+  .btn-ghost { @apply btn text-gray-700 hover:bg-gray-100; }
+  .btn-danger { @apply btn bg-red-600 text-white hover:bg-red-700; }
+  .btn-sm { @apply px-2 py-1 text-xs; }
+  .card { @apply bg-white border border-gray-200 rounded-lg shadow-sm; }
+  .input {
+    @apply w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500;
+  }
+  .label { @apply block text-xs font-medium text-gray-600 mb-1; }
+  .table-base { @apply w-full text-sm; }
+  .table-base thead th {
+    @apply text-left px-3 py-2 bg-gray-50 border-b border-gray-200 font-medium text-gray-600 text-xs uppercase tracking-wider whitespace-nowrap;
+  }
+  .table-base tbody td { @apply px-3 py-2 border-b border-gray-100 text-gray-800 align-top; }
+  .table-base tbody tr:hover { @apply bg-gray-50; }
+
+  .badge { @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium; }
+  .badge-green   { @apply badge bg-emerald-100 text-emerald-700; }
+  .badge-yellow  { @apply badge bg-amber-100 text-amber-700; }
+  .badge-red     { @apply badge bg-red-100 text-red-700; }
+  .badge-gray    { @apply badge bg-gray-100 text-gray-700; }
+  .badge-blue    { @apply badge bg-blue-100 text-blue-700; }
+  .badge-purple  { @apply badge bg-purple-100 text-purple-700; }
+}
+
+/* scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  body:has(.debt-document-print) * {
+    visibility: hidden !important;
+  }
+
+  body:has(.debt-document-print) .debt-document-print,
+  body:has(.debt-document-print) .debt-document-print * {
+    visibility: visible !important;
+  }
+
+  body:has(.debt-document-print) .debt-document-print {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    padding: 12mm;
+  }
+
+  .debt-document-print table,
+  .debt-document-print tr {
+    break-inside: avoid;
+  }
+}
