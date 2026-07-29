@@ -5,13 +5,14 @@ import StatCard from "@/components/StatCard";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { formatMoney, formatKg, formatPct, formatNumber, todayISO, addDays, daysBetween, CUSTOMER_GROUP_LABEL, LEAD_STATUS_LABEL } from "@/lib/utils";
+import { formatMoney, formatKg, formatPct, todayISO, addDays, daysBetween, CUSTOMER_GROUP_LABEL, LEAD_STATUS_LABEL } from "@/lib/utils";
 import { isBranchDue } from "@/lib/forecast";
 import { avgBatchesPerDay, materialDaysLeft, materialStockValue } from "@/lib/production";
 import { totalQty } from "@/lib/inventory";
+import { receiptEffectiveDate, summarizeFinanceRange } from "@/lib/finance";
 import {
-  DollarSign, TrendingUp, Wallet, ShoppingCart, Users, AlertTriangle,
-  Factory, Package, Warehouse,
+  DollarSign, TrendingUp, Wallet, ShoppingCart, AlertTriangle,
+  Factory, Package, Warehouse, HandCoins, Landmark, Clock3, Truck, CircleDollarSign,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -25,6 +26,7 @@ export default function DashboardPage() {
   const { state } = useStore();
   const { user } = useAuth();
   const showFin = can(user?.role, "view_financials"); // Net Revenue / Net Profit / Cost — chỉ admin
+  const showExpenses = can(user?.role, "view_expenses");
   const [preset, setPreset] = useState<Preset>("this_month");
   const [compare, setCompare] = useState(false);
   const [cFrom, setCFrom] = useState(todayISO().slice(0, 8) + "01");
@@ -56,25 +58,43 @@ export default function DashboardPage() {
     return os;
   }, [state.orders, user]);
 
+  const myReceipts = useMemo(() => {
+    if (user?.role !== "sale") return state.receipts;
+    const orderIds = new Set(myOrders.map(order => order.id));
+    return state.receipts.filter(receipt => receipt.orderId && orderIds.has(receipt.orderId));
+  }, [state.receipts, myOrders, user?.role]);
+
   const inRange = (date: string, r: { from: string; to: string }) => date >= r.from && date <= r.to;
 
   const sum = (r: { from: string; to: string }) => {
     const os = myOrders.filter(o => inRange(o.orderDate, r));
     return {
-      revenue: os.reduce((s, o) => s + o.revenue, 0),
-      net: os.reduce((s, o) => s + o.revenueNet, 0),
       profit: os.reduce((s, o) => s + o.profitNet, 0),
       count: os.length,
     };
   };
   const cur = sum(range);
   const prev = sum(prevRange);
+  const periodFinance = useMemo(
+    () => summarizeFinanceRange(myOrders, myReceipts, range, state.expenses),
+    [myOrders, myReceipts, range, state.expenses],
+  );
+  const previousFinance = useMemo(
+    () => summarizeFinanceRange(myOrders, myReceipts, prevRange, state.expenses),
+    [myOrders, myReceipts, prevRange, state.expenses],
+  );
+  const totalFinance = useMemo(
+    () => summarizeFinanceRange(myOrders, myReceipts, { from: "0000-01-01", to: "9999-12-31" }),
+    [myOrders, myReceipts],
+  );
 
   const growth = (a: number, b: number) => b === 0 ? (a > 0 ? 100 : 0) : ((a - b) / b) * 100;
+  const totalPeriodCosts = periodFinance.shipping + periodFinance.expenses;
+  const previousTotalCosts = previousFinance.shipping + previousFinance.expenses;
 
   const debtAmount = useMemo(
-    () => state.receipts.filter(r => r.status === "pending" || r.status === "waiting_admin").reduce((s, r) => s + r.amount, 0),
-    [state.receipts]
+    () => myReceipts.filter(r => r.status === "pending" || r.status === "waiting_admin").reduce((s, r) => s + r.amount, 0),
+    [myReceipts]
   );
   const dueBranches = useMemo(() => state.branches.filter(b => isBranchDue(b)).length, [state.branches]);
 
@@ -84,9 +104,10 @@ export default function DashboardPage() {
     const output = days.reduce((s, d) => s + d.outputKg, 0);
     const avgLoss = days.length ? days.reduce((s, d) => s + d.lossPct, 0) / days.length : 0;
     const avgCost = days.length ? days.reduce((s, d) => s + d.costPerKg, 0) / days.length : 0;
-    return { batches, output, avgLoss, avgCost, factoryStock: totalQty(state.factoryInventory) };
-  }, [state.productionDays, state.factoryInventory, range]);
+    return { batches, output, avgLoss, avgCost };
+  }, [state.productionDays, range]);
 
+  const factoryStock = totalQty(state.factoryInventory);
   const clStock = totalQty(state.clInventory);
   const avgBatch = useMemo(() => avgBatchesPerDay(state.productionDays), [state.productionDays]);
   const lowNvl = useMemo(() => state.materials.filter(m => materialDaysLeft(m, state.recipes.find(r => r.materialId === m.id), avgBatch) < (m.warningDays || 3)).length, [state.materials, state.recipes, avgBatch]);
@@ -94,23 +115,30 @@ export default function DashboardPage() {
 
   // charts
   const dailyRevenue = useMemo(() => {
-    const map = new Map<string, { net: number; prev: number }>();
+    const map = new Map<string, { actual: number; projected: number; prevActual: number; prevProjected: number }>();
     const span = Math.max(1, daysBetween(range.from, range.to) + 1);
     for (let i = 0; i < span && i < 62; i++) {
       const d = addDays(range.from, i);
-      map.set(d.slice(5), { net: 0, prev: 0 });
+      map.set(d.slice(5), { actual: 0, projected: 0, prevActual: 0, prevProjected: 0 });
     }
     myOrders.filter(o => inRange(o.orderDate, range)).forEach(o => {
-      const k = o.orderDate.slice(5); const e = map.get(k); if (e) e.net += o.revenueNet;
+      const k = o.orderDate.slice(5); const e = map.get(k); if (e) e.projected += o.revenueNet;
+    });
+    myReceipts.filter(r => r.status === "approved" && inRange(receiptEffectiveDate(r), range)).forEach(r => {
+      const k = receiptEffectiveDate(r).slice(5); const e = map.get(k); if (e) e.actual += r.amount;
     });
     if (compare) {
       myOrders.filter(o => inRange(o.orderDate, prevRange)).forEach(o => {
-        const shifted = addDays(o.orderDate, 0); const x = new Date(o.orderDate); x.setMonth(x.getMonth() + 1);
-        const k = x.toISOString().slice(5, 10); const e = map.get(k); if (e) e.prev += o.revenueNet;
+        const x = new Date(o.orderDate); x.setMonth(x.getMonth() + 1);
+        const k = x.toISOString().slice(5, 10); const e = map.get(k); if (e) e.prevProjected += o.revenueNet;
+      });
+      myReceipts.filter(r => r.status === "approved" && inRange(receiptEffectiveDate(r), prevRange)).forEach(r => {
+        const x = new Date(receiptEffectiveDate(r)); x.setMonth(x.getMonth() + 1);
+        const k = x.toISOString().slice(5, 10); const e = map.get(k); if (e) e.prevActual += r.amount;
       });
     }
-    return Array.from(map.entries()).map(([label, v]) => ({ label, net: v.net, prev: v.prev }));
-  }, [myOrders, range, prevRange, compare]);
+    return Array.from(map.entries()).map(([label, values]) => ({ label, ...values }));
+  }, [myOrders, myReceipts, range, prevRange, compare]);
 
   const bySale = useMemo(() => {
     const map: Record<string, number> = {};
@@ -139,41 +167,62 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <PageHeader title={`Xin chào, ${user?.fullName}`} subtitle="Tổng quan hoạt động" />
 
-      <div className="card p-3 flex flex-wrap gap-2 items-center">
-        {([["today", "Hôm nay"], ["7d", "7 ngày"], ["this_month", "Tháng này"], ["last_month", "Tháng trước"], ["custom", "Tùy chọn"]] as [Preset, string][]).map(([k, label]) => (
-          <button key={k} onClick={() => setPreset(k)} className={`btn-sm rounded-md px-3 ${preset === k ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-700"}`}>{label}</button>
-        ))}
-        {preset === "custom" && (
-          <>
-            <input type="date" className="input w-40" value={cFrom} onChange={e => setCFrom(e.target.value)} />
-            <span className="text-xs text-gray-500">→</span>
-            <input type="date" className="input w-40" value={cTo} onChange={e => setCTo(e.target.value)} />
-          </>
-        )}
-        <label className="flex items-center gap-2 text-sm ml-auto">
-          <input type="checkbox" checked={compare} onChange={e => setCompare(e.target.checked)} /> So sánh cùng kỳ tháng trước
-        </label>
-      </div>
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-gray-900">Tổng quan hiện tại</h2>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatCard label="Tổng tiền đã thu" value={formatMoney(totalFinance.actualRevenue)} hint="Lũy kế phiếu thu đã duyệt" icon={<HandCoins className="h-4 w-4 text-emerald-600" />} tone="good" />
+          <StatCard label="Tổng nợ tồn hiện tại" value={formatMoney(debtAmount)} hint="Tất cả phiếu thu chưa hoàn tất" icon={<Wallet className="h-4 w-4 text-amber-500" />} tone={debtAmount ? "warn" : "default"} />
+          <StatCard label="Tồn kho xưởng" value={formatKg(factoryStock)} icon={<Factory className="h-4 w-4 text-purple-500" />} />
+          <StatCard label="Tồn kho CL (HN)" value={formatKg(clStock)} icon={<Warehouse className="h-4 w-4 text-blue-500" />} />
+          {showFin && <StatCard label="Vốn NVL tồn xưởng" value={formatMoney(nvlValue)} icon={<Package className="h-4 w-4 text-gray-500" />} />}
+          <StatCard label="Khách sắp hết hàng" value={dueBranches} icon={<AlertTriangle className="h-4 w-4 text-red-500" />} tone={dueBranches ? "bad" : "default"} />
+          <StatCard label="NVL sắp hết" value={lowNvl} hint="< 3 ngày SX" tone={lowNvl ? "bad" : "default"} />
+        </div>
+      </section>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label="Doanh thu" value={formatMoney(cur.revenue)} hint={compare ? `Cùng kỳ: ${formatMoney(prev.revenue)} (${formatPct(growth(cur.revenue, prev.revenue))})` : undefined} icon={<DollarSign className="h-4 w-4 text-emerald-500" />} tone="good" />
-        {showFin && <StatCard label="Net Revenue" value={formatMoney(cur.net)} hint={compare ? formatPct(growth(cur.net, prev.net)) : undefined} />}
-        {showFin && <StatCard label="Net Profit" value={formatMoney(cur.profit)} icon={<TrendingUp className="h-4 w-4 text-emerald-500" />} />}
-        <StatCard label="Đơn hàng" value={cur.count} hint={compare ? `Cùng kỳ: ${prev.count}` : undefined} icon={<ShoppingCart className="h-4 w-4 text-blue-500" />} />
-        <StatCard label="Công nợ phải thu" value={formatMoney(debtAmount)} icon={<Wallet className="h-4 w-4 text-amber-500" />} tone={debtAmount ? "warn" : "default"} />
-        <StatCard label="Khách sắp hết hàng" value={dueBranches} icon={<AlertTriangle className="h-4 w-4 text-red-500" />} tone={dueBranches ? "bad" : "default"} />
-        <StatCard label="Mẻ sản xuất (kỳ)" value={prod.batches} hint={`${formatKg(prod.output)} thành phẩm`} icon={<Factory className="h-4 w-4 text-purple-500" />} />
-        <StatCard label="% hao hụt TB" value={formatPct(prod.avgLoss)} hint={showFin ? `Cost/kg: ${formatMoney(prod.avgCost)}` : undefined} />
-        <StatCard label="Tồn kho xưởng" value={formatKg(prod.factoryStock)} icon={<Factory className="h-4 w-4 text-purple-500" />} />
-        <StatCard label="Tồn kho CL (HN)" value={formatKg(clStock)} icon={<Warehouse className="h-4 w-4 text-blue-500" />} />
-        {showFin && <StatCard label="Vốn NVL tồn xưởng" value={formatMoney(nvlValue)} icon={<Package className="h-4 w-4 text-gray-500" />} />}
-        <StatCard label="NVL sắp hết" value={lowNvl} hint="< 3 ngày SX" tone={lowNvl ? "bad" : "default"} />
-      </div>
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-gray-900">Số liệu theo kỳ</h2>
+        <div className="card p-3 flex flex-wrap gap-2 items-center">
+          {([["today", "Hôm nay"], ["7d", "7 ngày"], ["this_month", "Tháng này"], ["last_month", "Tháng trước"], ["custom", "Tùy chọn"]] as [Preset, string][]).map(([k, label]) => (
+            <button key={k} onClick={() => setPreset(k)} className={`btn-sm rounded-md px-3 ${preset === k ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-700"}`}>{label}</button>
+          ))}
+          {preset === "custom" && (
+            <>
+              <input type="date" aria-label="Từ ngày" className="input w-40" value={cFrom} onChange={e => setCFrom(e.target.value)} />
+              <span className="text-xs text-gray-500">→</span>
+              <input type="date" aria-label="Đến ngày" className="input w-40" value={cTo} onChange={e => setCTo(e.target.value)} />
+            </>
+          )}
+          <label className="flex items-center gap-2 text-sm ml-auto">
+            <input type="checkbox" checked={compare} onChange={e => setCompare(e.target.checked)} /> So sánh cùng kỳ tháng trước
+          </label>
+        </div>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatCard
+            label="Doanh thu thực (tiền về)"
+            value={formatMoney(periodFinance.actualRevenue)}
+            hint={<><div>Tiền mặt {formatMoney(periodFinance.cashReceived)} · CK {formatMoney(periodFinance.bankReceived)}</div>{compare && <div>Cùng kỳ: {formatMoney(previousFinance.actualRevenue)} ({formatPct(growth(periodFinance.actualRevenue, previousFinance.actualRevenue))})</div>}</>}
+            icon={<DollarSign className="h-4 w-4 text-emerald-500" />}
+            tone="good"
+          />
+          <StatCard label="Doanh thu dự tính" value={formatMoney(periodFinance.projectedRevenue)} hint={compare ? `Cùng kỳ: ${formatMoney(previousFinance.projectedRevenue)} (${formatPct(growth(periodFinance.projectedRevenue, previousFinance.projectedRevenue))})` : "Gồm cả công nợ và chưa CK"} icon={<TrendingUp className="h-4 w-4 text-blue-500" />} />
+          {showFin && <StatCard label="Lợi nhuận ròng" value={formatMoney(cur.profit)} hint={compare ? `Cùng kỳ: ${formatMoney(prev.profit)}` : undefined} icon={<TrendingUp className="h-4 w-4 text-emerald-500" />} />}
+          <StatCard label="Đơn hàng" value={cur.count} hint={compare ? `Cùng kỳ: ${prev.count}` : undefined} icon={<ShoppingCart className="h-4 w-4 text-blue-500" />} />
+          <StatCard label="Nợ ngắn hạn phát sinh" value={formatMoney(periodFinance.shortTermDebt)} hint="Đơn chưa chuyển khoản trong kỳ" icon={<Clock3 className="h-4 w-4 text-amber-500" />} tone={periodFinance.shortTermDebt ? "warn" : "default"} />
+          <StatCard label="Nợ dài hạn phát sinh" value={formatMoney(periodFinance.longTermDebt)} hint="Đơn công nợ trong kỳ" icon={<Landmark className="h-4 w-4 text-red-500" />} tone={periodFinance.longTermDebt ? "bad" : "default"} />
+          <StatCard label="Tiền ship" value={formatMoney(periodFinance.shipping)} hint={`${periodFinance.shippingOrderCount} đơn có phí ship`} icon={<Truck className="h-4 w-4 text-blue-500" />} />
+          {showExpenses && <StatCard label="Phiếu chi" value={formatMoney(periodFinance.expenses)} hint={`${periodFinance.expenseCount} phiếu trong kỳ`} icon={<Wallet className="h-4 w-4 text-red-500" />} tone={periodFinance.expenses ? "bad" : "default"} />}
+          {showExpenses && <StatCard label="Tổng chi phí" value={formatMoney(totalPeriodCosts)} hint={<><div>Ship {formatMoney(periodFinance.shipping)} · Phiếu chi {formatMoney(periodFinance.expenses)}</div>{compare && <div>Cùng kỳ: {formatMoney(previousTotalCosts)}</div>}</>} icon={<CircleDollarSign className="h-4 w-4 text-orange-600" />} tone={totalPeriodCosts ? "bad" : "default"} />}
+          <StatCard label="Mẻ sản xuất" value={prod.batches} hint={`${formatKg(prod.output)} thành phẩm`} icon={<Factory className="h-4 w-4 text-purple-500" />} />
+          <StatCard label="% hao hụt TB" value={formatPct(prod.avgLoss)} hint={showFin ? `Cost/kg: ${formatMoney(prod.avgCost)}` : undefined} />
+        </div>
+      </section>
 
       <div className="grid lg:grid-cols-2 gap-4">
         {showFin && (
         <div className="card p-4 lg:col-span-2">
-          <div className="text-sm font-semibold mb-3">Doanh thu (Net) theo ngày {compare && "— so cùng kỳ"}</div>
+          <div className="text-sm font-semibold mb-3">Doanh thu thực và dự tính theo ngày {compare && "— so cùng kỳ"}</div>
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={dailyRevenue}>
               <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
@@ -181,8 +230,10 @@ export default function DashboardPage() {
               <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `${(v / 1_000_000).toFixed(0)}tr`} />
               <Tooltip formatter={(v: any) => formatMoney(Number(v))} />
               {compare && <Legend />}
-              <Line type="monotone" dataKey="net" name="Kỳ này" stroke="#f97316" strokeWidth={2} dot={false} />
-              {compare && <Line type="monotone" dataKey="prev" name="Cùng kỳ trước" stroke="#94a3b8" strokeWidth={2} strokeDasharray="4 4" dot={false} />}
+              <Line type="monotone" dataKey="actual" name="Thực thu" stroke="#059669" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="projected" name="Dự tính" stroke="#f97316" strokeWidth={2} dot={false} />
+              {compare && <Line type="monotone" dataKey="prevActual" name="Thực thu cùng kỳ" stroke="#6b7280" strokeWidth={1.5} strokeDasharray="4 4" dot={false} />}
+              {compare && <Line type="monotone" dataKey="prevProjected" name="Dự tính cùng kỳ" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="4 4" dot={false} />}
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -190,7 +241,7 @@ export default function DashboardPage() {
 
         {showFin && (
         <div className="card p-4">
-          <div className="text-sm font-semibold mb-3">Doanh thu theo nhóm khách</div>
+          <div className="text-sm font-semibold mb-3">Doanh thu dự tính theo nhóm khách</div>
           <ResponsiveContainer width="100%" height={250}>
             <PieChart>
               <Pie data={byGroup} dataKey="value" nameKey="name" outerRadius={90} label={(e: any) => e.name}>
@@ -204,7 +255,7 @@ export default function DashboardPage() {
 
         {showFin && (
         <div className="card p-4">
-          <div className="text-sm font-semibold mb-3">Doanh thu theo sale</div>
+          <div className="text-sm font-semibold mb-3">Doanh thu dự tính theo sale</div>
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={bySale}>
               <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
@@ -219,7 +270,7 @@ export default function DashboardPage() {
 
         {showFin && (
         <div className="card p-4">
-          <div className="text-sm font-semibold mb-3">Top 10 khách theo doanh thu</div>
+          <div className="text-sm font-semibold mb-3">Top 10 khách theo doanh thu dự tính</div>
           <ResponsiveContainer width="100%" height={280}>
             <BarChart data={topCustomers} layout="vertical" margin={{ left: 60 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
@@ -232,11 +283,15 @@ export default function DashboardPage() {
         </div>
         )}
 
+      </div>
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-gray-900">Hiện trạng khách hàng</h2>
         <div className="card p-4">
-          <div className="text-sm font-semibold mb-3">Trạng thái lead</div>
-          <ResponsiveContainer width="100%" height={280}>
+          <div className="text-sm font-semibold mb-3">Trạng thái lead hiện tại</div>
+          <ResponsiveContainer width="100%" height={240}>
             <PieChart>
-              <Pie data={leadFunnel} dataKey="value" nameKey="name" outerRadius={90} label>
+              <Pie data={leadFunnel} dataKey="value" nameKey="name" outerRadius={80} label>
                 {leadFunnel.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
               </Pie>
               <Tooltip />
@@ -244,7 +299,7 @@ export default function DashboardPage() {
             </PieChart>
           </ResponsiveContainer>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

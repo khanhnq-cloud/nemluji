@@ -247,10 +247,13 @@ create table if not exists expenses (
   id uuid primary key default gen_random_uuid(),
   code text unique not null,                    -- PC-2026-000001
   date date not null,
-  type text default 'other' check (type in ('destruction','factory_extra','other')),
+  type text default 'other' check (type in ('destruction','factory_extra','shipping','materials','marketing','utilities','salary','other')),
   amount numeric default 0,
+  payment_method text check (payment_method in ('cash','bank_transfer')),
+  payee text,
   note text,
   ref_id uuid,
+  created_by uuid references profiles(id),
   created_at timestamptz default now()
 );
 
@@ -355,6 +358,7 @@ create index if not exists idx_orders_sale on orders(sale_id);
 create index if not exists idx_orders_date on orders(order_date);
 create index if not exists idx_receipts_order on receipts(order_id);
 create index if not exists idx_receipts_status on receipts(status);
+create index if not exists idx_expenses_date on expenses(date);
 create index if not exists idx_branches_customer on customer_branches(customer_id);
 create index if not exists idx_leads_sale on leads(sale_id);
 create index if not exists idx_visits_lead on lead_visits(lead_id);

@@ -281,14 +281,30 @@ export interface DestructionLog {
   createdBy: string;
 }
 
+export type ExpenseType =
+  | "destruction"
+  | "factory_extra"
+  | "shipping"
+  | "materials"
+  | "marketing"
+  | "utilities"
+  | "salary"
+  | "other";
+
+export type ExpensePaymentMethod = "cash" | "bank_transfer";
+
 export interface Expense {
   id: string;
   code: string; // PC-2026-000001
   date: string;
-  type: "destruction" | "factory_extra" | "other";
+  type: ExpenseType;
   amount: number;
+  paymentMethod?: ExpensePaymentMethod;
+  payee?: string;
   note?: string;
   refId?: string; // id chứng từ gốc (vd destruction log)
+  createdBy?: string;
+  createdAt?: string;
 }
 
 export interface StockTransfer {

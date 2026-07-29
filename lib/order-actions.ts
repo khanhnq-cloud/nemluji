@@ -5,7 +5,7 @@ import { recalcBranchForecast } from "./forecast";
 import { nextSequentialCode, newId, todayISO } from "./utils";
 
 // Sinh phiếu thu theo payment_status (Rule 6 — mục 8.2.4)
-function receiptStatusFor(payment: PaymentStatus): ReceiptStatus | null {
+export function receiptStatusFor(payment: PaymentStatus): ReceiptStatus | null {
   switch (payment) {
     case "cash_done": return "approved";       // mặc định Admin đã thu tiền mặt
     case "da_ck": return "waiting_admin";       // chờ Admin xác nhận tiền về
@@ -14,6 +14,69 @@ function receiptStatusFor(payment: PaymentStatus): ReceiptStatus | null {
     case "tang": return null;                   // hàng tặng → không sinh phiếu thu
     default: return "pending";
   }
+}
+
+export function updateOrderShipFee(state: State, orderId: string, shipFee: number): State {
+  const order = state.orders.find(item => item.id === orderId);
+  if (!order || order.status !== "active" || !Number.isFinite(shipFee)) return state;
+
+  const calc = calcOrder({
+    items: order.items,
+    shipFee,
+    discountSpecial: order.discountSpecial,
+    discountMonthlyPct: order.discountMonthlyPct,
+    discountEarlyPayPct: order.discountEarlyPayPct,
+    saleCommissionPct: order.saleCommissionPct,
+  });
+  const orders = state.orders.map(item => item.id === orderId ? {
+    ...item,
+    shipFee,
+    revenue: calc.revenue,
+    revenueNet: calc.revenueNet,
+    cost: calc.cost,
+    saleCommission: calc.saleCommission,
+    profitNet: calc.profitNet,
+  } : item);
+  const receipts = state.receipts.map(receipt =>
+    receipt.orderId === orderId ? { ...receipt, amount: calc.revenueNet } : receipt
+  );
+
+  return { ...state, orders, receipts };
+}
+
+export function updateOrderPaymentStatus(
+  state: State,
+  orderId: string,
+  paymentStatus: PaymentStatus,
+  actor: Profile,
+): State {
+  const order = state.orders.find(item => item.id === orderId);
+  const receiptStatus = receiptStatusFor(paymentStatus);
+  if (!order || order.status !== "active" || !receiptStatus) return state;
+
+  const orders = state.orders.map(item => item.id === orderId ? { ...item, paymentStatus } : item);
+  const paymentMethod = paymentStatus === "cash_done" ? "cash" : "chuyển khoản";
+  const approved = receiptStatus === "approved";
+  const existingReceipt = state.receipts.find(receipt => receipt.orderId === orderId);
+  const receiptFields = {
+    customerId: order.customerId,
+    amount: order.revenueNet,
+    paymentMethod,
+    receiptDate: order.orderDate,
+    status: receiptStatus,
+    approvedBy: approved ? (actor.role === "admin" ? actor.id : "u_admin") : undefined,
+    approvedAt: approved ? todayISO() : undefined,
+  };
+  const receipts = existingReceipt
+    ? state.receipts.map(receipt => receipt.id === existingReceipt.id ? { ...receipt, ...receiptFields } : receipt)
+    : [{
+        id: newId(),
+        receiptCode: nextSequentialCode("PT", state.receipts.map(receipt => receipt.receiptCode)),
+        orderId,
+        ...receiptFields,
+      } satisfies Receipt, ...state.receipts];
+
+  return { ...state, orders, receipts };
 }
 
 export interface NewOrderInput {

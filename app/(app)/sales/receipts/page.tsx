@@ -4,24 +4,67 @@ import PageHeader from "@/components/PageHeader";
 import EmptyState from "@/components/EmptyState";
 import StatCard from "@/components/StatCard";
 import { ReceiptBadge } from "@/components/Badge";
+import SortableHeader, { type SortDirection } from "@/components/SortableHeader";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { formatDate, formatMoney, todayISO, RECEIPT_STATUS_LABEL } from "@/lib/utils";
-import { CheckCircle2, XCircle, Send, ShieldAlert } from "lucide-react";
+import { CheckCircle2, XCircle, Send, ShieldAlert, RotateCcw } from "lucide-react";
+
+type ReceiptSortColumn = "code" | "date" | "customer" | "order" | "paymentMethod" | "amount" | "status" | "approver";
 
 export default function ReceiptsPage() {
   const { state, update } = useStore();
   const { user } = useAuth();
   const [fStatus, setFStatus] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [sortColumn, setSortColumn] = useState<ReceiptSortColumn>("date");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
-  const isAdmin = user?.role === "admin";
   const canApprove = can(user?.role, "approve_receipt");
   const canCreate = can(user?.role, "create_receipt");
 
-  const rows = useMemo(() => state.receipts
-    .filter(r => !fStatus || r.status === fStatus)
-    .sort((a, b) => (b.receiptDate || "").localeCompare(a.receiptDate || "")), [state.receipts, fStatus]);
+  const rows = useMemo(() => {
+    const filtered = state.receipts.filter(receipt => {
+      if (fStatus && receipt.status !== fStatus) return false;
+      if (from && receipt.receiptDate < from) return false;
+      if (to && receipt.receiptDate > to) return false;
+      return true;
+    });
+
+    const valueOf = (receipt: typeof state.receipts[number]): string | number => {
+      switch (sortColumn) {
+        case "code": return receipt.receiptCode;
+        case "date": return receipt.receiptDate || "";
+        case "customer": return state.customers.find(customer => customer.id === receipt.customerId)?.fullName || "";
+        case "order": return state.orders.find(order => order.id === receipt.orderId)?.orderCode || "";
+        case "paymentMethod": return receipt.paymentMethod;
+        case "amount": return receipt.amount;
+        case "status": return RECEIPT_STATUS_LABEL[receipt.status] || receipt.status;
+        case "approver": return state.profiles.find(profile => profile.id === receipt.approvedBy)?.fullName || "";
+      }
+    };
+
+    return [...filtered].sort((a, b) => {
+      const left = valueOf(a);
+      const right = valueOf(b);
+      const comparison = typeof left === "number" && typeof right === "number"
+        ? left - right
+        : String(left).localeCompare(String(right), "vi", { numeric: true, sensitivity: "base" });
+      return sortDirection === "asc" ? comparison : -comparison;
+    });
+  }, [state.receipts, state.customers, state.orders, state.profiles, fStatus, from, to, sortColumn, sortDirection]);
+
+  const handleSort = (column: string) => {
+    const nextColumn = column as ReceiptSortColumn;
+    if (nextColumn === sortColumn) {
+      setSortDirection(current => current === "asc" ? "desc" : "asc");
+      return;
+    }
+    setSortColumn(nextColumn);
+    setSortDirection(nextColumn === "date" ? "desc" : "asc");
+  };
 
   const stats = useMemo(() => {
     const pending = state.receipts.filter(r => r.status === "pending" || r.status === "waiting_admin");
@@ -44,6 +87,26 @@ export default function ReceiptsPage() {
     const note = prompt("Lý do từ chối:") || "";
     update(s => ({ ...s, receipts: s.receipts.map(r => r.id === id ? { ...r, status: "rejected", note } : r) }));
   };
+  const cancelApproval = (id: string) => {
+    if (!confirm("Huỷ duyệt phiếu thu này? Đơn hàng liên quan sẽ chuyển về Chưa CK.")) return;
+    update(current => {
+      const receipt = current.receipts.find(item => item.id === id);
+      return {
+        ...current,
+        receipts: current.receipts.map(item => item.id === id ? {
+          ...item,
+          status: "pending",
+          paymentMethod: "chuyển khoản",
+          approvedBy: undefined,
+          approvedAt: undefined,
+          note: "Admin huỷ duyệt, chờ xác nhận chuyển khoản lại",
+        } : item),
+        orders: receipt?.orderId
+          ? current.orders.map(order => order.id === receipt.orderId ? { ...order, paymentStatus: "chua_ck" as const } : order)
+          : current.orders,
+      };
+    });
+  };
 
   return (
     <div className="space-y-4">
@@ -63,7 +126,10 @@ export default function ReceiptsPage() {
         </div>
       )}
 
-      <div className="card p-3 flex gap-2">
+      <div className="card p-3 flex flex-wrap gap-2 items-center">
+        <input type="date" className="input w-40" value={from} onChange={event => setFrom(event.target.value)} aria-label="Từ ngày" />
+        <span className="text-xs text-gray-500">→</span>
+        <input type="date" className="input w-40" value={to} onChange={event => setTo(event.target.value)} aria-label="Đến ngày" />
         <select className="input w-52" value={fStatus} onChange={e => setFStatus(e.target.value)}>
           <option value="">Tất cả trạng thái</option>
           {Object.entries(RECEIPT_STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -73,8 +139,15 @@ export default function ReceiptsPage() {
       <div className="card overflow-x-auto">
         <table className="table-base">
           <thead><tr>
-            <th>Mã PT</th><th>Ngày</th><th>Khách</th><th>Đơn</th><th>PT thanh toán</th>
-            <th className="text-right">Số tiền</th><th>Trạng thái</th><th>Người duyệt</th><th></th>
+            <SortableHeader label="Mã PT" column="code" activeColumn={sortColumn} direction={sortDirection} onSort={handleSort} />
+            <SortableHeader label="Ngày" column="date" activeColumn={sortColumn} direction={sortDirection} onSort={handleSort} />
+            <SortableHeader label="Khách" column="customer" activeColumn={sortColumn} direction={sortDirection} onSort={handleSort} />
+            <SortableHeader label="Đơn" column="order" activeColumn={sortColumn} direction={sortDirection} onSort={handleSort} />
+            <SortableHeader label="PT thanh toán" column="paymentMethod" activeColumn={sortColumn} direction={sortDirection} onSort={handleSort} />
+            <SortableHeader label="Số tiền" column="amount" activeColumn={sortColumn} direction={sortDirection} onSort={handleSort} align="right" />
+            <SortableHeader label="Trạng thái" column="status" activeColumn={sortColumn} direction={sortDirection} onSort={handleSort} />
+            <SortableHeader label="Người duyệt" column="approver" activeColumn={sortColumn} direction={sortDirection} onSort={handleSort} />
+            <th></th>
           </tr></thead>
           <tbody>
             {rows.map(r => {
@@ -102,6 +175,11 @@ export default function ReceiptsPage() {
                         <button className="btn-primary btn-sm" onClick={() => approve(r.id)}><CheckCircle2 className="h-3.5 w-3.5" /> Duyệt</button>
                         <button className="btn-ghost btn-sm text-red-600" onClick={() => reject(r.id)}><XCircle className="h-3.5 w-3.5" /></button>
                       </>
+                    )}
+                    {canApprove && r.status === "approved" && (
+                      <button className="btn-secondary btn-sm" onClick={() => cancelApproval(r.id)} title="Huỷ duyệt và đưa đơn về Chưa CK">
+                        <RotateCcw className="h-3.5 w-3.5" /> Huỷ duyệt
+                      </button>
                     )}
                   </td>
                 </tr>

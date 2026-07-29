@@ -44,6 +44,8 @@ export default function RecoveryPage() {
       id: expenseId, code: nextSequentialCode("PC", state.expenses.map(e => e.code)), date: df.logDate, type: "destruction",
       amount: total, refId: logId,
       note: `Tiêu huỷ ${df.qtyKg}kg ${prod?.name} (${df.warehouse === "factory" ? "Xưởng" : "Kho CL"})${df.reason ? " — " + df.reason : ""}`,
+      createdBy: user!.id,
+      createdAt: new Date().toISOString(),
     };
     const log: DestructionLog = {
       id: logId, logDate: df.logDate, productId: df.productId, warehouse: df.warehouse,

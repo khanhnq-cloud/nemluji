@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, ShoppingCart, Receipt, CreditCard, Users, CalendarClock,
   Target, Footprints, FlaskConical, Factory, Package, ArrowLeftRight, Recycle,
-  Warehouse, Wallet, FileBarChart, Settings, ShieldCheck,
+  Warehouse, Wallet, FileBarChart, Settings, ShieldCheck, HandCoins,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useStore } from "@/lib/store";
@@ -43,6 +43,9 @@ const SECTIONS: Section[] = [
   { title: "HRM", items: [
     { href: "/hrm/payroll",    label: "Bảng lương", icon: Wallet,        perm: "view_payroll_self" },
     { href: "/hrm/attendance", label: "Chấm công",  icon: Footprints,    perm: "view_payroll" },
+  ]},
+  { title: "Tài chính", items: [
+    { href: "/expenses", label: "Phiếu chi", icon: HandCoins, perm: "view_expenses" },
   ]},
   { title: "Khác", items: [
     { href: "/reports",  label: "Báo cáo",    icon: FileBarChart, perm: "view_reports" },

@@ -112,7 +112,7 @@ export function assigneeName(profiles: { id: string; fullName: string }[], id: s
 }
 
 export const PAYMENT_STATUS_LABEL: Record<string, string> = {
-  cash_done: "Tiền mặt (đã thu)",
+  cash_done: "Cash done",
   da_ck: "Đã CK",
   chua_ck: "Chưa CK",
   cong_no: "Công nợ",
@@ -125,6 +125,22 @@ export const RECEIPT_STATUS_LABEL: Record<string, string> = {
   approved: "Đã duyệt (tiền về)",
   rejected: "Từ chối",
   cancelled: "Đã huỷ",
+};
+
+export const EXPENSE_TYPE_LABEL: Record<string, string> = {
+  destruction: "Tiêu hủy thành phẩm",
+  factory_extra: "Chi phí phát sinh xưởng",
+  shipping: "Vận chuyển / giao hàng",
+  materials: "Nguyên vật liệu",
+  marketing: "Marketing",
+  utilities: "Điện, nước, dịch vụ",
+  salary: "Lương / nhân sự",
+  other: "Chi phí khác",
+};
+
+export const EXPENSE_PAYMENT_METHOD_LABEL: Record<string, string> = {
+  cash: "Tiền mặt",
+  bank_transfer: "Chuyển khoản",
 };
 
 export const LEAD_STATUS_LABEL: Record<string, string> = {

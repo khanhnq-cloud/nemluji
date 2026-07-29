@@ -50,6 +50,7 @@ app/(app)/
   sales/orders                Đơn (chiết khấu 3 lớp, hàng tặng, auto phiếu thu)
   sales/receipts              Phiếu thu (Admin duyệt)
   sales/debts                 Công nợ (snapshot tháng)
+  expenses                    Phiếu chi theo ngày
   customers + /forecast       Khách & chi nhánh, dự báo lịch
   team-sales/leads + /samples Lead + visit timeline, phễu chuyển đổi
   production/days             Mẻ SX (trừ lùi NVL, loss, cost/kg)

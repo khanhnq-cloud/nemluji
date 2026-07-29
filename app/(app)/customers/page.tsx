@@ -1,5 +1,6 @@
 "use client";
 import { Fragment, useMemo, useState } from "react";
+import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import Modal from "@/components/Modal";
 import EmptyState from "@/components/EmptyState";
@@ -10,7 +11,7 @@ import { can } from "@/lib/permissions";
 import { CUSTOMER_GROUP_LABEL, B2B_GROUPS, COMPANY_ASSIGNEE, assigneeName, formatDate, formatMoney, nextSequentialCode, monthISO, newId } from "@/lib/utils";
 import { isBranchDue } from "@/lib/forecast";
 import { REGIONS, SOURCES } from "@/lib/mock-data";
-import { Plus, ChevronDown, ChevronRight, MapPin } from "lucide-react";
+import { Plus, ChevronDown, ChevronRight, MapPin, ArrowRight } from "lucide-react";
 import type { Customer, CustomerBranch } from "@/types";
 
 const REGION_OTHER = "__other__";
@@ -144,15 +145,22 @@ export default function CustomersPage() {
                 <Fragment key={c.id}>
                   <tr>
                     <td><button onClick={() => toggle(c.id)} className="text-gray-400">{isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</button></td>
-                    <td className="font-medium">{c.customerCode}</td>
-                    <td>{c.fullName}</td>
+                    <td className="font-medium">
+                      <Link href={`/customers/${c.id}`} className="text-brand-700 hover:underline">{c.customerCode}</Link>
+                    </td>
+                    <td>
+                      <Link href={`/customers/${c.id}`} className="font-medium text-gray-900 hover:text-brand-700 hover:underline">{c.fullName}</Link>
+                    </td>
                     <td>{CUSTOMER_GROUP_LABEL[c.customerGroup]}</td>
                     <td>{c.region}</td>
                     <td>{assigneeName(state.profiles, c.assignedSaleId)}</td>
                     <td className="text-right">{branches.length}</td>
                     <td className="text-right">{formatMoney(revByCustomer[c.id] || 0)}</td>
                     <td><StatusBadge status={c.status} /></td>
-                    <td>
+                    <td className="whitespace-nowrap">
+                      <Link href={`/customers/${c.id}`} className="btn-ghost btn-sm" title="Xem thông tin và lịch sử lấy đơn" aria-label={`Xem khách hàng ${c.fullName}`}>
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Link>
                       {can(user?.role, "manage_customers") && (
                         <button className="btn-ghost btn-sm" onClick={() => { setOpenBranch(c.id); setBf({ status: "active" }); }} title="Thêm chi nhánh">
                           <MapPin className="h-3.5 w-3.5" /> + CN
