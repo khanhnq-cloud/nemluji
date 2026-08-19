@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { formatMoney, formatKg, formatPct, todayISO, addDays, daysBetween, CUSTOMER_GROUP_LABEL, LEAD_STATUS_LABEL } from "@/lib/utils";
 import { isBranchDue } from "@/lib/forecast";
-import { avgBatchesPerDay, materialDaysLeft, materialStockValue } from "@/lib/production";
+import { materialDaysLeft, materialStockValue } from "@/lib/production";
 import { totalQty } from "@/lib/inventory";
 import { receiptEffectiveDate, summarizeFinanceRange } from "@/lib/finance";
 import {
@@ -27,6 +27,7 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const showFin = can(user?.role, "view_financials"); // Net Revenue / Net Profit / Cost — chỉ admin
   const showExpenses = can(user?.role, "view_expenses");
+  const showSales = can(user?.role, "view_orders"); // role Xưởng không xem doanh thu/bán hàng
   const [preset, setPreset] = useState<Preset>("this_month");
   const [compare, setCompare] = useState(false);
   const [cFrom, setCFrom] = useState(todayISO().slice(0, 8) + "01");
@@ -89,8 +90,8 @@ export default function DashboardPage() {
   );
 
   const growth = (a: number, b: number) => b === 0 ? (a > 0 ? 100 : 0) : ((a - b) / b) * 100;
-  const totalPeriodCosts = periodFinance.shipping + periodFinance.expenses;
-  const previousTotalCosts = previousFinance.shipping + previousFinance.expenses;
+  const totalPeriodCosts = periodFinance.totalCost;
+  const previousTotalCosts = previousFinance.totalCost;
 
   const debtAmount = useMemo(
     () => myReceipts.filter(r => r.status === "pending" || r.status === "waiting_admin").reduce((s, r) => s + r.amount, 0),
@@ -109,8 +110,8 @@ export default function DashboardPage() {
 
   const factoryStock = totalQty(state.factoryInventory);
   const clStock = totalQty(state.clInventory);
-  const avgBatch = useMemo(() => avgBatchesPerDay(state.productionDays), [state.productionDays]);
-  const lowNvl = useMemo(() => state.materials.filter(m => materialDaysLeft(m, state.recipes.find(r => r.materialId === m.id), avgBatch) < (m.warningDays || 3)).length, [state.materials, state.recipes, avgBatch]);
+  const plannedBatches = state.settings.plannedBatchesPerDay || 8;
+  const lowNvl = useMemo(() => state.materials.filter(m => m.isActive && materialDaysLeft(m, state.recipes.find(r => r.materialId === m.id), plannedBatches) < (m.warningDays || 3)).length, [state.materials, state.recipes, plannedBatches]);
   const nvlValue = useMemo(() => materialStockValue(state.materials), [state.materials]);
 
   // charts
@@ -170,16 +171,17 @@ export default function DashboardPage() {
       <section className="space-y-3">
         <h2 className="text-sm font-semibold text-gray-900">Tổng quan hiện tại</h2>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard label="Tổng tiền đã thu" value={formatMoney(totalFinance.actualRevenue)} hint="Lũy kế phiếu thu đã duyệt" icon={<HandCoins className="h-4 w-4 text-emerald-600" />} tone="good" />
-          <StatCard label="Tổng nợ tồn hiện tại" value={formatMoney(debtAmount)} hint="Tất cả phiếu thu chưa hoàn tất" icon={<Wallet className="h-4 w-4 text-amber-500" />} tone={debtAmount ? "warn" : "default"} />
+          {showSales && <StatCard label="Tổng tiền đã thu" value={formatMoney(totalFinance.actualRevenue)} hint="Lũy kế phiếu thu đã duyệt" icon={<HandCoins className="h-4 w-4 text-emerald-600" />} tone="good" />}
+          {showSales && <StatCard label="Tổng nợ tồn hiện tại" value={formatMoney(debtAmount)} hint="Tất cả phiếu thu chưa hoàn tất" icon={<Wallet className="h-4 w-4 text-amber-500" />} tone={debtAmount ? "warn" : "default"} />}
           <StatCard label="Tồn kho xưởng" value={formatKg(factoryStock)} icon={<Factory className="h-4 w-4 text-purple-500" />} />
-          <StatCard label="Tồn kho CL (HN)" value={formatKg(clStock)} icon={<Warehouse className="h-4 w-4 text-blue-500" />} />
+          <StatCard label="Tồn kho Cát Linh" value={formatKg(clStock)} icon={<Warehouse className="h-4 w-4 text-blue-500" />} />
           {showFin && <StatCard label="Vốn NVL tồn xưởng" value={formatMoney(nvlValue)} icon={<Package className="h-4 w-4 text-gray-500" />} />}
-          <StatCard label="Khách sắp hết hàng" value={dueBranches} icon={<AlertTriangle className="h-4 w-4 text-red-500" />} tone={dueBranches ? "bad" : "default"} />
-          <StatCard label="NVL sắp hết" value={lowNvl} hint="< 3 ngày SX" tone={lowNvl ? "bad" : "default"} />
+          {showSales && <StatCard label="Khách sắp hết hàng" value={dueBranches} icon={<AlertTriangle className="h-4 w-4 text-red-500" />} tone={dueBranches ? "bad" : "default"} />}
+          <StatCard label="NVL sắp hết" value={lowNvl} hint={`< ${state.settings.nvlWarningDays} ngày SX`} tone={lowNvl ? "bad" : "default"} />
         </div>
       </section>
 
+      {showSales && (
       <section className="space-y-3">
         <h2 className="text-sm font-semibold text-gray-900">Số liệu theo kỳ</h2>
         <div className="card p-3 flex flex-wrap gap-2 items-center">
@@ -213,11 +215,13 @@ export default function DashboardPage() {
           <StatCard label="Nợ dài hạn phát sinh" value={formatMoney(periodFinance.longTermDebt)} hint="Đơn công nợ trong kỳ" icon={<Landmark className="h-4 w-4 text-red-500" />} tone={periodFinance.longTermDebt ? "bad" : "default"} />
           <StatCard label="Tiền ship" value={formatMoney(periodFinance.shipping)} hint={`${periodFinance.shippingOrderCount} đơn có phí ship`} icon={<Truck className="h-4 w-4 text-blue-500" />} />
           {showExpenses && <StatCard label="Phiếu chi" value={formatMoney(periodFinance.expenses)} hint={`${periodFinance.expenseCount} phiếu trong kỳ`} icon={<Wallet className="h-4 w-4 text-red-500" />} tone={periodFinance.expenses ? "bad" : "default"} />}
-          {showExpenses && <StatCard label="Tổng chi phí" value={formatMoney(totalPeriodCosts)} hint={<><div>Ship {formatMoney(periodFinance.shipping)} · Phiếu chi {formatMoney(periodFinance.expenses)}</div>{compare && <div>Cùng kỳ: {formatMoney(previousTotalCosts)}</div>}</>} icon={<CircleDollarSign className="h-4 w-4 text-orange-600" />} tone={totalPeriodCosts ? "bad" : "default"} />}
+          {showExpenses && <StatCard label="Tổng chi phí" value={formatMoney(totalPeriodCosts)} hint={<><div>Ship {formatMoney(periodFinance.shippingCost)} · Phiếu chi {formatMoney(periodFinance.expenses)}</div>{compare && <div>Cùng kỳ: {formatMoney(previousTotalCosts)}</div>}</>} icon={<CircleDollarSign className="h-4 w-4 text-orange-600" />} tone={totalPeriodCosts ? "bad" : "default"} />}
+          {showExpenses && <StatCard label="Tổng tiền (thực thu − chi phí)" value={formatMoney(periodFinance.netCash)} hint={compare ? `Cùng kỳ: ${formatMoney(previousFinance.netCash)}` : "Tiền hàng nhận về − tổng chi phí"} icon={<CircleDollarSign className="h-4 w-4 text-emerald-600" />} tone={periodFinance.netCash < 0 ? "bad" : "good"} />}
           <StatCard label="Mẻ sản xuất" value={prod.batches} hint={`${formatKg(prod.output)} thành phẩm`} icon={<Factory className="h-4 w-4 text-purple-500" />} />
           <StatCard label="% hao hụt TB" value={formatPct(prod.avgLoss)} hint={showFin ? `Cost/kg: ${formatMoney(prod.avgCost)}` : undefined} />
         </div>
       </section>
+      )}
 
       <div className="grid lg:grid-cols-2 gap-4">
         {showFin && (
@@ -285,6 +289,7 @@ export default function DashboardPage() {
 
       </div>
 
+      {showSales && (
       <section className="space-y-3">
         <h2 className="text-sm font-semibold text-gray-900">Hiện trạng khách hàng</h2>
         <div className="card p-4">
@@ -300,6 +305,7 @@ export default function DashboardPage() {
           </ResponsiveContainer>
         </div>
       </section>
+      )}
     </div>
   );
 }

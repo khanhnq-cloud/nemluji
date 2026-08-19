@@ -23,12 +23,12 @@ export default function WarehouseHnPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Kho thành phẩm — Xưởng ↔ Hà Nội" subtitle="Tồn 2 kho liên kết: Sản xuất → Xưởng → (chuyển kho) → CL → (bán hàng) trừ CL" />
+      <PageHeader title="Kho thành phẩm — Xưởng ↔ Cát Linh" subtitle="Tồn 2 kho liên kết: Sản xuất → Xưởng → (chuyển kho) → Cát Linh → (bán hàng) trừ Cát Linh" />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard label="Tồn kho Xưởng (kg)" value={formatKg(totalQty(state.factoryInventory))} />
-        <StatCard label="Tồn kho CL - HN (kg)" value={formatKg(totalQty(state.clInventory))} />
-        <StatCard label="Giá trị tồn CL" value={formatMoney(clValue)} />
+        <StatCard label="Tồn kho Cát Linh (kg)" value={formatKg(totalQty(state.clInventory))} />
+        <StatCard label="Giá trị tồn Cát Linh" value={formatMoney(clValue)} />
         <StatCard label="Phiếu chuyển chờ nhận" value={pendingTransfers.length} tone={pendingTransfers.length ? "warn" : "default"} />
       </div>
 
@@ -38,9 +38,9 @@ export default function WarehouseHnPage() {
           <thead><tr>
             <th>Sản phẩm</th><th>Đơn vị</th>
             <th className="text-right">Tồn Xưởng (Đông Anh)</th>
-            <th className="text-right">Tồn CL (Hà Nội)</th>
+            <th className="text-right">Tồn Cát Linh</th>
             <th className="text-right">Tổng tồn</th>
-            <th className="text-right">Giá vốn/kg</th><th className="text-right">Giá trị tồn CL</th>
+            <th className="text-right">Giá vốn/kg</th><th className="text-right">Giá trị tồn Cát Linh</th>
           </tr></thead>
           <tbody>
             {state.products.map(p => {

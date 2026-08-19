@@ -6,7 +6,7 @@ import Modal from "@/components/Modal";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { avgBatchesPerDay, materialDaysLeft, materialStockValue, batchesRemaining } from "@/lib/production";
+import { materialDaysLeft, materialStockValue, batchesRemaining } from "@/lib/production";
 import { formatMoney, formatNumber } from "@/lib/utils";
 import { PackagePlus } from "lucide-react";
 
@@ -17,15 +17,20 @@ export default function MaterialsPage() {
   const [impQty, setImpQty] = useState(0);
   const [impPrice, setImpPrice] = useState(0);
 
-  const avg = useMemo(() => avgBatchesPerDay(state.productionDays), [state.productionDays]);
-  const stockValue = useMemo(() => materialStockValue(state.materials), [state.materials]);
+  const plannedBatches = state.settings.plannedBatchesPerDay || 8;
+  const setPlanned = (v: number) => update(s => ({ ...s, settings: { ...s.settings, plannedBatchesPerDay: v } }));
+  const activeMaterials = useMemo(
+    () => state.materials.filter(m => m.isActive).sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999)),
+    [state.materials],
+  );
+  const stockValue = useMemo(() => materialStockValue(activeMaterials), [activeMaterials]);
   const remaining = useMemo(() => batchesRemaining(state.materials, state.recipes), [state.materials, state.recipes]);
 
-  const rows = useMemo(() => state.materials.map(m => {
+  const rows = useMemo(() => activeMaterials.map(m => {
     const recipe = state.recipes.find(r => r.materialId === m.id);
-    const daysLeft = materialDaysLeft(m, recipe, avg);
+    const daysLeft = materialDaysLeft(m, recipe, plannedBatches);
     return { m, recipe, daysLeft, warn: daysLeft < (m.warningDays || 3) };
-  }), [state.materials, state.recipes, avg]);
+  }), [activeMaterials, state.recipes, plannedBatches]);
 
   const lowCount = rows.filter(r => r.warn).length;
 
@@ -42,13 +47,18 @@ export default function MaterialsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Nguyên liệu & Tồn kho xưởng" subtitle="Định mức theo mẻ + cảnh báo NVL sắp hết" />
+      <PageHeader title="Nguyên liệu & Tồn kho xưởng" subtitle="Tồn theo Sổ Xưởng • dự báo số ngày còn dùng theo số mẻ dự kiến/ngày" />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard label="Vốn NVL tồn xưởng" value={formatMoney(stockValue)} />
         <StatCard label="Số mẻ còn làm được" value={remaining} tone={remaining < 3 ? "bad" : "good"} />
-        <StatCard label="NVL sắp hết (<3 ngày)" value={lowCount} tone={lowCount ? "bad" : "default"} />
-        <StatCard label="Mẻ TB/ngày" value={formatNumber(avg, 1)} />
+        <StatCard label="NVL sắp hết" value={lowCount} hint={`< ${state.settings.nvlWarningDays} ngày`} tone={lowCount ? "bad" : "default"} />
+        <div className="card p-3">
+          <div className="text-xs text-gray-500">Số mẻ dự kiến / ngày</div>
+          <input type="number" min="0" step="0.5" className="input mt-1" value={plannedBatches}
+            onChange={e => setPlanned(Number(e.target.value))} aria-label="Số mẻ dự kiến mỗi ngày" />
+          <div className="text-xs text-gray-400 mt-1">Đổi để tính lại "còn dùng được"</div>
+        </div>
       </div>
 
       <div className="card overflow-x-auto">

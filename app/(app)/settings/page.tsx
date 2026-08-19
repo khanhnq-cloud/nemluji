@@ -7,10 +7,10 @@ import { formatMoney, newId } from "@/lib/utils";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import type { Product, Material, ProductionRecipe } from "@/types";
 
-type ProdForm = { id?: string; sku: string; name: string; unit: string; defaultPrice: number; fixCost: number };
+type ProdForm = { id?: string; sku: string; name: string; unit: string; defaultPrice: number; fixCost: number; isFactoryOutput: boolean };
 type MatForm = { name: string; unit: string; unitPrice: number; warningDays: number; batch1Rate: number; batch2Rate: number };
 
-const blankProd = (): ProdForm => ({ sku: "", name: "", unit: "kg", defaultPrice: 0, fixCost: 0 });
+const blankProd = (): ProdForm => ({ sku: "", name: "", unit: "kg", defaultPrice: 0, fixCost: 0, isFactoryOutput: true });
 const blankMat = (): MatForm => ({ name: "", unit: "kg", unitPrice: 0, warningDays: 3, batch1Rate: 0, batch2Rate: 0 });
 
 export default function SettingsPage() {
@@ -34,6 +34,7 @@ export default function SettingsPage() {
         defaultPrice: prodForm.defaultPrice,
         fixCost: prodForm.fixCost,
         isActive: true,
+        isFactoryOutput: prodForm.isFactoryOutput,
       };
       update(s => ({ ...s, products: [...s.products, p] }));
     }
@@ -121,7 +122,7 @@ export default function SettingsPage() {
               <tr>
                 <th>SKU</th><th>Tên</th><th>Đơn vị</th>
                 <th className="w-36">Giá bán</th><th className="w-36">Giá vốn (fix_cost)</th>
-                <th>Trạng thái</th><th className="w-24"></th>
+                <th>Thành phẩm xưởng</th><th>Trạng thái</th><th className="w-24"></th>
               </tr>
             </thead>
             <tbody>
@@ -139,6 +140,13 @@ export default function SettingsPage() {
                       onChange={e => update(s => ({ ...s, products: s.products.map(x => x.id === p.id ? { ...x, fixCost: Number(e.target.value) } : x) }))} />
                   </td>
                   <td>
+                    <button onClick={() => update(s => ({ ...s, products: s.products.map(x => x.id === p.id ? { ...x, isFactoryOutput: !x.isFactoryOutput } : x) }))}
+                      className={p.isFactoryOutput ? "badge-blue cursor-pointer" : "badge-gray cursor-pointer"}
+                      title="Bật để hiện thành cột trong Sổ Xưởng">
+                      {p.isFactoryOutput ? "Có (vào Sổ Xưởng)" : "Không"}
+                    </button>
+                  </td>
+                  <td>
                     <button onClick={() => toggleProdActive(p.id, p.isActive)}
                       className={p.isActive ? "badge-green cursor-pointer" : "badge-gray cursor-pointer"}>
                       {p.isActive ? "Đang dùng" : "Ngưng"}
@@ -149,7 +157,7 @@ export default function SettingsPage() {
                       <button
                         className="p-1.5 rounded hover:bg-gray-100 text-gray-500"
                         title="Sửa"
-                        onClick={() => setProdForm({ id: p.id, sku: p.sku, name: p.name, unit: p.unit, defaultPrice: p.defaultPrice, fixCost: p.fixCost })}>
+                        onClick={() => setProdForm({ id: p.id, sku: p.sku, name: p.name, unit: p.unit, defaultPrice: p.defaultPrice, fixCost: p.fixCost, isFactoryOutput: !!p.isFactoryOutput })}>
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
                       <button
@@ -219,28 +227,35 @@ export default function SettingsPage() {
       )}
 
       {tab === "config" && (
-        <div className="card p-4 max-w-2xl grid sm:grid-cols-2 gap-4">
-          <Field label="% hoa hồng sale mặc định" value={state.settings.defaultCommissionPct} onChange={v => setSetting({ defaultCommissionPct: v })} suffix="%" />
-          <Field label="% CK trả sớm mặc định" value={state.settings.defaultEarlyPayPct} onChange={v => setSetting({ defaultEarlyPayPct: v })} suffix="%" />
-          <Field label="Thưởng khách mới (đ/khách)" value={state.settings.newCustomerBonus} onChange={v => setSetting({ newCustomerBonus: v })} />
-          <Field label="Thưởng thái độ (đ)" value={state.settings.attitudeBonus} onChange={v => setSetting({ attitudeBonus: v })} />
-          <Field label="Mẻ thường/ngày (ngưỡng)" value={state.settings.factoryBatchThreshold} onChange={v => setSetting({ factoryBatchThreshold: v })} />
-          <Field label="Bồi dưỡng mẻ vượt (đ/mẻ)" value={state.settings.factoryExtraBatchBonus} onChange={v => setSetting({ factoryExtraBatchBonus: v })} />
-          <Field label="% hoa hồng chéo kho HN" value={state.settings.crossCommissionPct} onChange={v => setSetting({ crossCommissionPct: v })} suffix="%" />
-          <Field label="Cảnh báo NVL (ngày)" value={state.settings.nvlWarningDays} onChange={v => setSetting({ nvlWarningDays: v })} />
-          <div>
-            <label className="label">HH chéo: tính từ doanh thu sale</label>
-            <select className="input" value={state.settings.crossCommissionFromSaleId || ""} onChange={e => setSetting({ crossCommissionFromSaleId: e.target.value })}>
-              <option value="">— chọn —</option>
-              {state.profiles.filter(p => p.role === "sale").map(p => <option key={p.id} value={p.id}>{p.fullName}</option>)}
-            </select>
+        <div className="space-y-4">
+          <div className="card p-4 max-w-2xl grid sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2 text-sm font-semibold text-gray-700">Bán hàng & hoa hồng</div>
+            <Field label="% hoa hồng đơn hàng mặc định" value={state.settings.defaultCommissionPct} onChange={v => setSetting({ defaultCommissionPct: v })} suffix="%" />
+            <Field label="% hoa hồng công nợ mặc định" value={state.settings.defaultDebtCommissionPct} onChange={v => setSetting({ defaultDebtCommissionPct: v })} suffix="%" />
+            <Field label="% CK trả sớm mặc định" value={state.settings.defaultEarlyPayPct} onChange={v => setSetting({ defaultEarlyPayPct: v })} suffix="%" />
+            <p className="sm:col-span-2 text-xs text-gray-500">
+              % hoa hồng ở đây là mặc định khi tạo nhân viên mới; mỗi nhân viên có thể đặt riêng ở trang Người dùng và sửa được trên từng dòng bảng lương.
+            </p>
           </div>
-          <div>
-            <label className="label">HH chéo: trả cho NV kho</label>
-            <select className="input" value={state.settings.crossCommissionToProfileId || ""} onChange={e => setSetting({ crossCommissionToProfileId: e.target.value })}>
-              <option value="">— chọn —</option>
-              {state.profiles.filter(p => p.role === "warehouse_hn").map(p => <option key={p.id} value={p.id}>{p.fullName}</option>)}
-            </select>
+
+          <div className="card p-4 max-w-2xl grid sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2 text-sm font-semibold text-gray-700">Cấu hình Xưởng — giá thành & dự báo</div>
+            <Field label="Sản lượng chuẩn / mẻ 2 (kg)" value={state.settings.standardOutputPerBatch2} onChange={v => setSetting({ standardOutputPerBatch2: v })} />
+            <Field label="Chi phí NVL / mẻ 2 (đ)" value={state.settings.materialCostPerBatch2} onChange={v => setSetting({ materialCostPerBatch2: v })} />
+            <Field label="Số mẻ dự kiến / ngày (dự báo NVL)" value={state.settings.plannedBatchesPerDay} onChange={v => setSetting({ plannedBatchesPerDay: v })} />
+            <Field label="Cảnh báo NVL (ngày)" value={state.settings.nvlWarningDays} onChange={v => setSetting({ nvlWarningDays: v })} />
+            <p className="sm:col-span-2 text-xs text-gray-500">
+              Hao hụt/mẻ = (sản lượng chuẩn × mẻ 2 − Ra thành phẩm) / mẻ 2. Giá thành/kg = (mẻ 2 × chi phí NVL/mẻ 2) / Ra thành phẩm.
+              Ngày sản xuất đã chốt giữ nguyên hằng số tại thời điểm chốt, sửa ở đây chỉ áp dụng cho ngày mới.
+            </p>
+          </div>
+
+          <div className="card p-4 max-w-2xl grid sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2 text-sm font-semibold text-gray-700">Lương xưởng</div>
+            <Field label="Mẻ thường/ngày (ngưỡng)" value={state.settings.factoryBatchThreshold} onChange={v => setSetting({ factoryBatchThreshold: v })} />
+            <Field label="Chi phí mẻ làm thêm (đ/mẻ)" value={state.settings.factoryExtraBatchBonus} onChange={v => setSetting({ factoryExtraBatchBonus: v })} />
+            <Field label="Chi phí ngày tăng ca (đ/ngày)" value={state.settings.factoryOvertimeDayBonus} onChange={v => setSetting({ factoryOvertimeDayBonus: v })} />
+            <p className="sm:col-span-2 text-xs text-gray-500">Chi phí mẻ / tăng ca chỉ áp dụng cho nhóm xưởng.</p>
           </div>
         </div>
       )}
@@ -280,10 +295,17 @@ export default function SettingsPage() {
               <input type="number" className="input" value={prodForm.defaultPrice}
                 onChange={e => setProdForm(f => f ? { ...f, defaultPrice: Number(e.target.value) } : f)} />
             </div>
-            <div className="sm:col-span-2">
+            <div>
               <label className="label">Giá vốn — fix_cost (đ)</label>
               <input type="number" className="input" value={prodForm.fixCost}
                 onChange={e => setProdForm(f => f ? { ...f, fixCost: Number(e.target.value) } : f)} />
+            </div>
+            <div className="flex items-end">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={prodForm.isFactoryOutput}
+                  onChange={e => setProdForm(f => f ? { ...f, isFactoryOutput: e.target.checked } : f)} />
+                Là thành phẩm xưởng (hiện trong Sổ Xưởng)
+              </label>
             </div>
           </div>
         )}

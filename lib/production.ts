@@ -1,8 +1,5 @@
 import type { Material, ProductionRecipe, MaterialUsage, ProductionDay } from "@/types";
 
-// NVL khối lượng chính (thịt + mỡ + giò thừa) → dùng tính expected_output (Rule 2)
-export const MAIN_MASS_MATERIAL_IDS = ["m_ga", "m_mo", "m_gio"];
-
 // Trừ lùi NVL theo định mức (Rule 1): used = b1*rate1 + b2*rate2
 export function computeUsages(
   batch1Count: number,
@@ -21,26 +18,32 @@ export function computeUsages(
 }
 
 export interface BatchResult {
-  totalMaterialCost: number;
-  expectedOutput: number;
+  totalMaterialCost: number; // Σ định mức × đơn giá (tham chiếu)
+  expectedOutput: number;    // = sản lượng chuẩn/mẻ 2 × số mẻ 2
   lossKg: number;
   lossPct: number;
-  costPerKg: number;
+  lossPerBatch: number;      // hao hụt / mẻ (theo sổ)
+  costPerKg: number;         // giá thành/kg = (mẻ2 × chi phí NVL/mẻ2) / output
 }
 
-export function computeBatchResult(usages: MaterialUsage[], outputKg: number): BatchResult {
+// Kết quả mẻ theo công thức sổ Xưởng — dùng 2 hằng số cấu hình, KHÔNG hard-code.
+export function computeBatchResult(
+  usages: MaterialUsage[],
+  outputKg: number,
+  batch2Count: number,
+  standardOutputPerBatch2: number,
+  materialCostPerBatch2: number,
+): BatchResult {
   const totalMaterialCost = usages.reduce((s, u) => s + u.totalCost, 0);
-  const expectedOutput = +usages
-    .filter(u => MAIN_MASS_MATERIAL_IDS.includes(u.materialId))
-    .reduce((s, u) => s + u.usedQty, 0)
-    .toFixed(2);
+  const expectedOutput = +(standardOutputPerBatch2 * batch2Count).toFixed(2);
   const lossKg = +(expectedOutput - outputKg).toFixed(2);
   const lossPct = expectedOutput > 0 ? +((lossKg / expectedOutput) * 100).toFixed(2) : 0;
-  const costPerKg = outputKg > 0 ? Math.round(totalMaterialCost / outputKg) : 0;
-  return { totalMaterialCost, expectedOutput, lossKg, lossPct, costPerKg };
+  const lossPerBatch = batch2Count > 0 ? +(lossKg / batch2Count).toFixed(3) : 0;
+  const costPerKg = outputKg > 0 ? Math.round((batch2Count * materialCostPerBatch2) / outputKg) : 0;
+  return { totalMaterialCost, expectedOutput, lossKg, lossPct, lossPerBatch, costPerKg };
 }
 
-// Số mẻ còn có thể làm với tồn NVL hiện tại (Rule 6): MIN(qty / (rate1+rate2))
+// Số mẻ còn có thể làm với tồn NVL hiện tại: MIN(qty / (rate1+rate2))
 export function batchesRemaining(materials: Material[], recipes: ProductionRecipe[]): number {
   let min = Infinity;
   for (const r of recipes) {
@@ -53,13 +56,13 @@ export function batchesRemaining(materials: Material[], recipes: ProductionRecip
   return min === Infinity ? 0 : Math.floor(min);
 }
 
-// Số ngày NVL còn dùng được = mẻ còn lại của NVL đó / mẻ trung bình mỗi ngày
-export function materialDaysLeft(material: Material, recipe: ProductionRecipe | undefined, avgBatchesPerDay: number): number {
+// Số ngày NVL còn dùng được = mẻ còn lại của NVL đó / mẻ dự kiến mỗi ngày (người dùng nhập)
+export function materialDaysLeft(material: Material, recipe: ProductionRecipe | undefined, batchesPerDay: number): number {
   if (!recipe) return 999;
   const rate = recipe.batch1Rate + recipe.batch2Rate;
-  if (rate <= 0 || avgBatchesPerDay <= 0) return 999;
+  if (rate <= 0 || batchesPerDay <= 0) return 999;
   const batches = material.qty / rate;
-  return Math.floor(batches / avgBatchesPerDay);
+  return Math.floor(batches / batchesPerDay);
 }
 
 export function avgBatchesPerDay(days: ProductionDay[]): number {
@@ -69,7 +72,7 @@ export function avgBatchesPerDay(days: ProductionDay[]): number {
   return total / closed.length;
 }
 
-// Vốn NVL tồn xưởng (Rule 7)
+// Vốn NVL tồn xưởng = Σ tồn × đơn giá
 export function materialStockValue(materials: Material[]): number {
   return materials.reduce((s, m) => s + m.qty * m.unitPrice, 0);
 }

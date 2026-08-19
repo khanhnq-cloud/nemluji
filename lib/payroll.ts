@@ -1,104 +1,157 @@
 import type {
   Profile, Order, Receipt, Attendance, ProductionDay,
-  NewCustomerCredit, AppSettings, PayrollLine,
+  AppSettings, PayrollLine, PayrollGroup,
 } from "@/types";
 
 const monthKey = (year: number, month: number) => `${year}-${String(month).padStart(2, "0")}`;
 
-// Hoa hồng sale (Rule 12.5): commission × (đơn tháng N đã thu + công nợ tháng trước đã thu trong N)
-// => base = SUM(receipt.amount approved có approvedAt trong tháng N, thuộc đơn của sale này)
-export function saleCommissionBase(saleId: string, year: number, month: number, orders: Order[], receipts: Receipt[]): number {
-  const mk = monthKey(year, month);
-  return receipts
-    .filter(r => r.status === "approved" && (r.approvedAt || r.receiptDate || "").startsWith(mk))
-    .filter(r => {
-      const order = orders.find(o => o.id === r.orderId);
-      return order && order.status === "active" && order.saleId === saleId;
-    })
-    .reduce((s, r) => s + r.amount, 0);
+// 3 nhóm tính lương:
+//  - sale            : sale + quản lý  → lương cứng + HH đơn + HH công nợ + thưởng/phạt
+//  - factory_manager : quản lý xưởng   → lương theo ngày công + mẻ làm thêm + tăng ca + thưởng/phạt
+//  - factory_staff   : nhân viên xưởng → lương theo ngày công + tăng ca + thưởng/phạt
+//  - standard        : kho + NV thường → lương cứng + thưởng/phạt
+export function payrollGroupOf(profile: Profile): PayrollGroup {
+  if (profile.role === "sale" || profile.role === "manager") return "sale";
+  if (profile.role === "factory_da") return profile.factoryLevel === "manager" ? "factory_manager" : "factory_staff";
+  return "standard";
 }
 
-function offUnpaidDeduction(profile: Profile, year: number, month: number, attendance: Attendance[]): number {
+export const isFactoryGroup = (g: PayrollGroup) => g === "factory_manager" || g === "factory_staff";
+
+// Số ngày trong tháng (dùng làm mẫu số cho lương theo ngày công của xưởng)
+export const daysInMonth = (year: number, month: number) => new Date(year, month, 0).getDate();
+
+// Hoa hồng sale tách làm 2 rổ, đều dựa trên PHIẾU THU ĐÃ DUYỆT (tiền thực về) trong tháng N.
+// Đơn chưa thanh toán → không có phiếu thu duyệt → không được tính đồng nào.
+//  - current : tiền thu trong tháng N của đơn phát sinh chính tháng N
+//  - debt    : tiền thu trong tháng N của đơn phát sinh từ các tháng trước (công nợ kỳ trước)
+// Lưu ý: phiếu thu không gắn đơn hàng (orderId rỗng) không quy được về sale nên không tính.
+export function saleCommissionBases(
+  saleId: string, year: number, month: number, orders: Order[], receipts: Receipt[],
+): { current: number; debt: number } {
   const mk = monthKey(year, month);
-  const offDays = attendance.filter(a => a.profileId === profile.id && a.workDate.startsWith(mk) && a.status === "off_unpaid").length;
-  return Math.round((profile.baseSalary / 26) * offDays);
-}
+  let current = 0;
+  let debt = 0;
 
-export function calcSalePayroll(opts: {
-  profile: Profile;
-  year: number; month: number;
-  orders: Order[]; receipts: Receipt[]; attendance: Attendance[];
-  credits: NewCustomerCredit[]; settings: AppSettings;
-  attitudeOn?: boolean; otherBonus?: number;
-}): PayrollLine {
-  const { profile, year, month, orders, receipts, attendance, credits, settings } = opts;
-  const mk = monthKey(year, month);
-  const base = profile.baseSalary;
-  const commBase = saleCommissionBase(profile.id, year, month, orders, receipts);
-  const commissionAmount = Math.round(commBase * (profile.commissionPct || 0) / 100);
+  for (const r of receipts) {
+    if (r.status !== "approved") continue;
+    const paidMonth = (r.approvedAt || r.receiptDate || "").slice(0, 7);
+    if (paidMonth !== mk) continue;
 
-  const qualified = credits.filter(c => c.saleId === profile.id && c.status === "qualified" && c.qualifyingMonth === mk).length;
-  const newCustomerBonus = qualified * settings.newCustomerBonus;
+    const order = orders.find(o => o.id === r.orderId);
+    if (!order || order.status !== "active" || order.saleId !== saleId) continue;
 
-  const attitudeBonus = opts.attitudeOn ? settings.attitudeBonus : 0;
-  const otherBonus = opts.otherBonus || 0;
-  const offDayDeduction = offUnpaidDeduction(profile, year, month, attendance);
-
-  const total = base + commissionAmount + newCustomerBonus + attitudeBonus + otherBonus - offDayDeduction;
-  return {
-    id: "", profileId: profile.id, baseSalary: base,
-    commissionAmount, crossCommission: 0, newCustomerBonus,
-    extraBatchesBonus: 0, attitudeBonus, otherBonus, offDayDeduction, total,
-  };
-}
-
-// Hoa hồng chéo kho HN (Rule 8.7.2): 1% × revenue_net các đơn (đã receipt approved) của 1 sale được cấu hình
-export function calcWarehousePayroll(opts: {
-  profile: Profile;
-  year: number; month: number;
-  orders: Order[]; receipts: Receipt[]; attendance: Attendance[];
-  settings: AppSettings; otherBonus?: number;
-}): PayrollLine {
-  const { profile, year, month, orders, receipts, attendance, settings } = opts;
-  const base = profile.baseSalary;
-  let crossCommission = 0;
-  if (settings.crossCommissionFromSaleId) {
-    const commBase = saleCommissionBase(settings.crossCommissionFromSaleId, year, month, orders, receipts);
-    crossCommission = Math.round(commBase * settings.crossCommissionPct / 100);
+    const orderMonth = order.orderDate.slice(0, 7);
+    if (orderMonth === mk) current += r.amount;
+    else if (orderMonth < mk) debt += r.amount;
+    // đơn của tháng sau (nhập lùi ngày) → bỏ qua, chờ đúng kỳ
   }
-  const otherBonus = opts.otherBonus || 0;
-  const offDayDeduction = offUnpaidDeduction(profile, year, month, attendance);
-  const total = base + crossCommission + otherBonus - offDayDeduction;
-  return {
-    id: "", profileId: profile.id, baseSalary: base,
-    commissionAmount: 0, crossCommission, newCustomerBonus: 0,
-    extraBatchesBonus: 0, attitudeBonus: 0, otherBonus, offDayDeduction, total,
-  };
+  return { current, debt };
 }
 
-// Lương xưởng (Rule 8.10 / 12.10): bồi dưỡng mẻ vượt 10/ngày × 150k
-export function calcFactoryPayroll(opts: {
+// Số ngày đi làm trong tháng theo bảng chấm công.
+// Quy ước giống trang Chấm công: ngày không có bản ghi = đi làm.
+// Làm = 1 • Nghỉ có phép = 1 (vẫn hưởng lương) • Nửa ngày = 0.5 • Nghỉ không phép = 0
+export function workedDaysOf(
+  profileId: string, year: number, month: number, attendance: Attendance[],
+): number {
+  const mk = monthKey(year, month);
+  const total = daysInMonth(year, month);
+  const byDate = new Map(
+    attendance.filter(a => a.profileId === profileId && a.workDate.startsWith(mk))
+      .map(a => [a.workDate, a.status] as const),
+  );
+
+  let worked = 0;
+  for (let d = 1; d <= total; d++) {
+    const status = byDate.get(`${mk}-${String(d).padStart(2, "0")}`) || "work";
+    if (status === "work" || status === "off_paid") worked += 1;
+    else if (status === "half") worked += 0.5;
+  }
+  return worked;
+}
+
+// Số mẻ làm thêm gợi ý = tổng mẻ vượt ngưỡng mẻ thường/ngày của các ngày SX đã chốt.
+export function suggestedExtraBatches(
+  year: number, month: number, productionDays: ProductionDay[], settings: AppSettings,
+): number {
+  const mk = monthKey(year, month);
+  const days = productionDays.filter(d => d.status === "closed" && d.productionDate.startsWith(mk));
+  const totalBatches = days.reduce((s, d) => s + d.batch1Count + d.batch2Count, 0);
+  return Math.max(0, totalBatches - settings.factoryBatchThreshold * days.length);
+}
+
+// Tính lại tiền của 1 dòng từ các tham số đã có (dùng cả khi kế toán sửa tay % / số ngày / số mẻ)
+export function recalcLine(line: PayrollLine): PayrollLine {
+  const factory = isFactoryGroup(line.group);
+
+  const baseSalaryEarned = factory && line.monthDays > 0
+    ? Math.round((line.baseSalary / line.monthDays) * line.workedDays)
+    : line.baseSalary;
+
+  const commissionAmount = line.group === "sale"
+    ? Math.round(line.commissionBase * line.commissionPct / 100) : 0;
+  const debtCommissionAmount = line.group === "sale"
+    ? Math.round(line.debtCommissionBase * line.debtCommissionPct / 100) : 0;
+
+  // Chỉ quản lý xưởng được tính mẻ làm thêm
+  const extraBatchesAmount = line.group === "factory_manager"
+    ? Math.round(line.extraBatches * line.extraBatchRate) : 0;
+  const overtimeAmount = factory
+    ? Math.round(line.overtimeDays * line.overtimeDayRate) : 0;
+
+  const total = baseSalaryEarned + commissionAmount + debtCommissionAmount
+    + extraBatchesAmount + overtimeAmount + line.adjustment;
+
+  return { ...line, baseSalaryEarned, commissionAmount, debtCommissionAmount, extraBatchesAmount, overtimeAmount, total };
+}
+
+export function buildPayrollLine(opts: {
   profile: Profile;
   year: number; month: number;
-  productionDays: ProductionDay[]; attendance: Attendance[];
-  settings: AppSettings; otherBonus?: number;
+  orders: Order[]; receipts: Receipt[];
+  attendance: Attendance[]; productionDays: ProductionDay[];
+  settings: AppSettings;
+  // giữ lại phần kế toán đã nhập tay khi bấm "Tính lại"
+  keep?: Partial<Pick<PayrollLine, "adjustment" | "adjustmentReason" | "commissionPct" | "debtCommissionPct" | "workedDays" | "extraBatches" | "extraBatchRate" | "overtimeDays" | "overtimeDayRate">>;
 }): PayrollLine {
-  const { profile, year, month, productionDays, attendance, settings } = opts;
-  const mk = monthKey(year, month);
-  const base = profile.baseSalary;
+  const { profile, year, month, orders, receipts, attendance, productionDays, settings, keep } = opts;
+  const group = payrollGroupOf(profile);
+  const factory = isFactoryGroup(group);
 
-  const monthDays = productionDays.filter(d => d.status === "closed" && d.productionDate.startsWith(mk));
-  const totalBatches = monthDays.reduce((s, d) => s + d.batch1Count + d.batch2Count, 0);
-  const workingDays = monthDays.length;
-  const extraBatches = Math.max(0, totalBatches - settings.factoryBatchThreshold * workingDays);
-  const extraBatchesBonus = Math.round(extraBatches * settings.factoryExtraBatchBonus);
+  const bases = group === "sale"
+    ? saleCommissionBases(profile.id, year, month, orders, receipts)
+    : { current: 0, debt: 0 };
 
-  const otherBonus = opts.otherBonus || 0;
-  const offDayDeduction = offUnpaidDeduction(profile, year, month, attendance);
-  const total = base + extraBatchesBonus + otherBonus - offDayDeduction;
-  return {
-    id: "", profileId: profile.id, baseSalary: base,
-    commissionAmount: 0, crossCommission: 0, newCustomerBonus: 0,
-    extraBatchesBonus, attitudeBonus: 0, otherBonus, offDayDeduction, total,
+  const line: PayrollLine = {
+    id: "",
+    profileId: profile.id,
+    group,
+    baseSalary: profile.baseSalary,
+    baseSalaryEarned: 0,
+
+    monthDays: daysInMonth(year, month),
+    workedDays: factory ? (keep?.workedDays ?? workedDaysOf(profile.id, year, month, attendance)) : 0,
+    extraBatches: group === "factory_manager"
+      ? (keep?.extraBatches ?? suggestedExtraBatches(year, month, productionDays, settings)) : 0,
+    extraBatchRate: keep?.extraBatchRate ?? settings.factoryExtraBatchBonus,
+    extraBatchesAmount: 0,
+    overtimeDays: keep?.overtimeDays ?? 0,
+    overtimeDayRate: keep?.overtimeDayRate ?? settings.factoryOvertimeDayBonus,
+    overtimeAmount: 0,
+
+    commissionPct: keep?.commissionPct ?? (profile.commissionPct ?? settings.defaultCommissionPct),
+    commissionBase: bases.current,
+    commissionAmount: 0,
+    debtCommissionPct: keep?.debtCommissionPct ?? (profile.debtCommissionPct ?? settings.defaultDebtCommissionPct),
+    debtCommissionBase: bases.debt,
+    debtCommissionAmount: 0,
+
+    adjustment: keep?.adjustment ?? 0,
+    adjustmentReason: keep?.adjustmentReason,
+
+    total: 0,
   };
+
+  return recalcLine(line);
 }

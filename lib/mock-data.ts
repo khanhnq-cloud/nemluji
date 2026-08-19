@@ -2,7 +2,7 @@ import type {
   Profile, Customer, CustomerBranch, Product, Order, Receipt,
   DebtStatement, Lead, Material, ProductionRecipe, ProductionDay,
   StockTransfer, ClInventory, Attendance, PayrollPeriod, RecoveryLog,
-  DestructionLog, NewCustomerCredit, AppSettings, Expense,
+  DestructionLog, NewCustomerCredit, AppSettings, Expense, MckLog,
 } from "@/types";
 
 const today = new Date();
@@ -13,22 +13,25 @@ const dtAgo = (n: number, h: number, m: number) => { const d = new Date(today); 
 // ---------- Profiles (users) ----------
 export const PROFILES: Profile[] = [
   { id: "u_admin",   fullName: "Chủ DN",       email: "admin@nnnt.vn",   role: "admin",        baseSalary: 0,          commissionPct: 0, status: "active" },
-  { id: "u_manager", fullName: "Quản lý Vận hành", email: "manager@nnnt.vn", role: "manager",  baseSalary: 18_000_000, commissionPct: 0, status: "active" },
-  { id: "u_hoa",     fullName: "Nguyễn Thị Hoa", email: "hoa@nnnt.vn",   role: "sale",         baseSalary: 6_000_000,  commissionPct: 5, region: "Hoàn Kiếm", status: "active" },
-  { id: "u_manh",    fullName: "Trần Văn Mạnh",  email: "manh@nnnt.vn",  role: "sale",         baseSalary: 6_000_000,  commissionPct: 5, region: "Hai Bà Trưng", status: "active" },
-  { id: "u_ngoc",    fullName: "Lê Thị Ngọc",    email: "ngoc@nnnt.vn",  role: "sale",         baseSalary: 6_000_000,  commissionPct: 5, region: "Đông Anh", status: "active" },
+  { id: "u_manager", fullName: "Quản lý Vận hành", email: "manager@nnnt.vn", role: "manager",  baseSalary: 18_000_000, commissionPct: 2, debtCommissionPct: 1, status: "active" },
+  { id: "u_hoa",     fullName: "Nguyễn Thị Hoa", email: "hoa@nnnt.vn",   role: "sale",         baseSalary: 6_000_000,  commissionPct: 5, debtCommissionPct: 3, region: "Hoàn Kiếm", status: "active" },
+  { id: "u_manh",    fullName: "Trần Văn Mạnh",  email: "manh@nnnt.vn",  role: "sale",         baseSalary: 6_000_000,  commissionPct: 5, debtCommissionPct: 3, region: "Hai Bà Trưng", status: "active" },
+  { id: "u_ngoc",    fullName: "Lê Thị Ngọc",    email: "ngoc@nnnt.vn",  role: "sale",         baseSalary: 6_000_000,  commissionPct: 5, debtCommissionPct: 3, region: "Đông Anh", status: "active" },
   { id: "u_hieu",    fullName: "Phạm Văn Hiếu",  email: "hieu@nnnt.vn",  role: "warehouse_hn", baseSalary: 8_000_000,  commissionPct: 0, status: "active" },
-  { id: "u_factory", fullName: "Đỗ Văn Tâm",     email: "xuong@nnnt.vn", role: "factory_da",   baseSalary: 9_000_000,  commissionPct: 0, status: "active" },
+  { id: "u_factory", fullName: "Đỗ Văn Tâm",     email: "xuong@nnnt.vn", role: "factory_da",   baseSalary: 9_000_000,  commissionPct: 0, factoryLevel: "manager", status: "active" },
+  { id: "u_xuong2",  fullName: "Bùi Thị Lan",    email: "lan@nnnt.vn",   role: "factory_da",   baseSalary: 7_000_000,  commissionPct: 0, factoryLevel: "staff", status: "active" },
   { id: "u_acc",     fullName: "Vũ Thị Kế Toán", email: "ketoan@nnnt.vn", role: "accountant",  baseSalary: 10_000_000, commissionPct: 0, status: "active" },
 ];
 
 // ---------- Products ----------
+// isFactoryOutput = thành phẩm của xưởng → hiện thành cột trong Sổ Xưởng (TT/TTC/Ngắn/Vụn)
 export const PRODUCTS: Product[] = [
-  { id: "p_tt",   sku: "TT",   name: "Nem nướng TT",   unit: "kg",  defaultPrice: 220000, fixCost: 150000, isActive: true },
-  { id: "p_ttc",  sku: "TTC",  name: "Nem nướng TTC",  unit: "kg",  defaultPrice: 260000, fixCost: 175000, isActive: true },
-  { id: "p_vun",  sku: "VUN",  name: "Nem vụn",        unit: "kg",  defaultPrice: 160000, fixCost: 110000, isActive: true },
-  { id: "p_cham", sku: "CHAM", name: "Nước chấm",      unit: "túi", defaultPrice: 25000,  fixCost: 12000,  isActive: true },
-  { id: "p_ram",  sku: "RAM",  name: "Ram giòn",       unit: "kg",  defaultPrice: 240000, fixCost: 165000, isActive: true },
+  { id: "p_tt",   sku: "TT",   name: "Nem nướng TT",   unit: "kg",  defaultPrice: 220000, fixCost: 150000, isActive: true, isFactoryOutput: true },
+  { id: "p_ttc",  sku: "TTC",  name: "Nem nướng TTC",  unit: "kg",  defaultPrice: 260000, fixCost: 175000, isActive: true, isFactoryOutput: true },
+  { id: "p_ngan", sku: "NGAN", name: "Nem ngắn",       unit: "kg",  defaultPrice: 180000, fixCost: 125000, isActive: true, isFactoryOutput: true },
+  { id: "p_vun",  sku: "VUN",  name: "Nem vụn",        unit: "kg",  defaultPrice: 160000, fixCost: 110000, isActive: true, isFactoryOutput: true },
+  { id: "p_cham", sku: "CHAM", name: "Nước chấm",      unit: "túi", defaultPrice: 25000,  fixCost: 12000,  isActive: true, isFactoryOutput: false },
+  { id: "p_ram",  sku: "RAM",  name: "Ram giòn",       unit: "kg",  defaultPrice: 240000, fixCost: 165000, isActive: true, isFactoryOutput: false },
 ];
 
 // ---------- Customers + Branches ----------
@@ -140,41 +143,47 @@ export const LEADS: Lead[] = [
   },
 ];
 
-// ---------- Materials + Recipe (mục 8.5.2) ----------
+// ---------- Materials + Recipe ----------
+// Đơn giá + định mức lấy theo sổ "Kiểm Kho" (file Quản Lý Xưởng.xlsx). sortOrder = thứ tự cột sổ.
+// Tỏi / Hành / Thịt xay / Giò thừa: theo dõi tồn nhưng KHÔNG có định mức trừ tự động.
 export const MATERIALS: Material[] = [
-  { id: "m_ga",    name: "Thịt gà",   unit: "kg", unitPrice: 80000,  warningDays: 3, qty: 120, isActive: true },
-  { id: "m_mo",    name: "Mỡ",        unit: "kg", unitPrice: 45000,  warningDays: 3, qty: 90,  isActive: true },
-  { id: "m_toi",   name: "Tỏi",       unit: "kg", unitPrice: 50000,  warningDays: 3, qty: 8,   isActive: true },
-  { id: "m_hanh",  name: "Hành",      unit: "kg", unitPrice: 30000,  warningDays: 3, qty: 9,   isActive: true },
-  { id: "m_botsa", name: "Bột sả",    unit: "kg", unitPrice: 90000,  warningDays: 3, qty: 4,   isActive: true },
-  { id: "m_botv",  name: "Bột vàng",  unit: "kg", unitPrice: 70000,  warningDays: 3, qty: 3,   isActive: true },
-  { id: "m_aaa",   name: "AAA",       unit: "kg", unitPrice: 120000, warningDays: 3, qty: 2,   isActive: true },
-  { id: "m_tieu",  name: "Tiêu",      unit: "kg", unitPrice: 250000, warningDays: 3, qty: 1.5, isActive: true },
-  { id: "m_mam",   name: "Mắm (L)",   unit: "L",  unitPrice: 35000,  warningDays: 3, qty: 18,  isActive: true },
-  { id: "m_duong", name: "Đường",     unit: "kg", unitPrice: 22000,  warningDays: 3, qty: 30,  isActive: true },
-  { id: "m_muoi",  name: "Muối đỏ",   unit: "kg", unitPrice: 18000,  warningDays: 3, qty: 12,  isActive: true },
-  { id: "m_michinh", name: "Mì chính", unit: "kg", unitPrice: 60000, warningDays: 3, qty: 6,   isActive: true },
-  { id: "m_cbq",   name: "CBQ",       unit: "kg", unitPrice: 90000,  warningDays: 3, qty: 4,   isActive: true },
-  { id: "m_hhht",  name: "HHHT",      unit: "đv", unitPrice: 110000, warningDays: 3, qty: 20,  isActive: true },
-  { id: "m_gio",   name: "Giò thừa",  unit: "kg", unitPrice: 70000,  warningDays: 3, qty: 10,  isActive: true },
+  { id: "m_ga",    name: "Thịt gà",   unit: "kg", unitPrice: 67000,  warningDays: 3, qty: 300, isActive: true, sortOrder: 1 },
+  { id: "m_mo",    name: "Mỡ",        unit: "kg", unitPrice: 38000,  warningDays: 3, qty: 200, isActive: true, sortOrder: 2 },
+  { id: "m_nac",   name: "Thịt nạc",  unit: "kg", unitPrice: 58000,  warningDays: 3, qty: 150, isActive: true, sortOrder: 3 },
+  { id: "m_toi",   name: "Tỏi",       unit: "kg", unitPrice: 50000,  warningDays: 3, qty: 8,   isActive: true, sortOrder: 4 },
+  { id: "m_hanh",  name: "Hành",      unit: "kg", unitPrice: 30000,  warningDays: 3, qty: 9,   isActive: true, sortOrder: 5 },
+  { id: "m_botsa", name: "Bột sả",    unit: "kg", unitPrice: 150000, warningDays: 3, qty: 6,   isActive: true, sortOrder: 6 },
+  { id: "m_botv",  name: "Bột vàng",  unit: "kg", unitPrice: 300000, warningDays: 3, qty: 5,   isActive: true, sortOrder: 7 },
+  { id: "m_aaa",   name: "AAA",       unit: "kg", unitPrice: 270000, warningDays: 3, qty: 3,   isActive: true, sortOrder: 8 },
+  { id: "m_tieu",  name: "Tiêu",      unit: "kg", unitPrice: 170000, warningDays: 3, qty: 3,   isActive: true, sortOrder: 9 },
+  { id: "m_mam",   name: "Mắm (L)",   unit: "L",  unitPrice: 13000,  warningDays: 3, qty: 20,  isActive: true, sortOrder: 10 },
+  { id: "m_duong", name: "Đường",     unit: "kg", unitPrice: 19200,  warningDays: 3, qty: 30,  isActive: true, sortOrder: 11 },
+  { id: "m_muoi",  name: "Muối đỏ",   unit: "kg", unitPrice: 80000,  warningDays: 3, qty: 12,  isActive: true, sortOrder: 12 },
+  { id: "m_michinh", name: "Mì chính", unit: "kg", unitPrice: 41000, warningDays: 3, qty: 8,   isActive: true, sortOrder: 13 },
+  { id: "m_cbq",   name: "CBQ",       unit: "kg", unitPrice: 140000, warningDays: 3, qty: 12,  isActive: true, sortOrder: 14 },
+  { id: "m_hhht",  name: "HHHT",      unit: "đv", unitPrice: 85500,  warningDays: 3, qty: 40,  isActive: true, sortOrder: 15 },
+  { id: "m_xay",   name: "Thịt xay",  unit: "kg", unitPrice: 0,      warningDays: 3, qty: 40,  isActive: true, sortOrder: 16 },
+  { id: "m_gio",   name: "Giò thừa",  unit: "kg", unitPrice: 70000,  warningDays: 3, qty: 5,   isActive: true, sortOrder: 17 },
 ];
 
 export const RECIPES: ProductionRecipe[] = [
-  { materialId: "m_ga",    batch1Rate: 9,     batch2Rate: 3.5 },
-  { materialId: "m_mo",    batch1Rate: 8,     batch2Rate: 6 },
-  { materialId: "m_toi",   batch1Rate: 0,     batch2Rate: 0.7 },
-  { materialId: "m_hanh",  batch1Rate: 0,     batch2Rate: 0.7 },
-  { materialId: "m_botsa", batch1Rate: 0,     batch2Rate: 0.245 },
-  { materialId: "m_botv",  batch1Rate: 0,     batch2Rate: 0.1 },
-  { materialId: "m_aaa",   batch1Rate: 0,     batch2Rate: 0.08 },
-  { materialId: "m_tieu",  batch1Rate: 0,     batch2Rate: 0.06 },
-  { materialId: "m_mam",   batch1Rate: 0.575, batch2Rate: 0 },
-  { materialId: "m_duong", batch1Rate: 1,     batch2Rate: 0 },
-  { materialId: "m_muoi",  batch1Rate: 0.126, batch2Rate: 0 },
-  { materialId: "m_michinh", batch1Rate: 0.2, batch2Rate: 0 },
-  { materialId: "m_cbq",   batch1Rate: 0.075, batch2Rate: 0 },
-  { materialId: "m_hhht",  batch1Rate: 1,     batch2Rate: 0 },
-  { materialId: "m_gio",   batch1Rate: 0,     batch2Rate: 0 },
+  { materialId: "m_ga",    batch1Rate: 10,     batch2Rate: 0 },
+  { materialId: "m_mo",    batch1Rate: 7,      batch2Rate: 6 },
+  { materialId: "m_nac",   batch1Rate: 0,      batch2Rate: 4 },
+  { materialId: "m_toi",   batch1Rate: 0,      batch2Rate: 0 },
+  { materialId: "m_hanh",  batch1Rate: 0,      batch2Rate: 0 },
+  { materialId: "m_botsa", batch1Rate: 0,      batch2Rate: 0.245 },
+  { materialId: "m_botv",  batch1Rate: 0,      batch2Rate: 0.1 },
+  { materialId: "m_aaa",   batch1Rate: 0,      batch2Rate: 0.1 },
+  { materialId: "m_tieu",  batch1Rate: 0,      batch2Rate: 0.06 },
+  { materialId: "m_mam",   batch1Rate: 0.575,  batch2Rate: 0 },
+  { materialId: "m_duong", batch1Rate: 1,      batch2Rate: 0 },
+  { materialId: "m_muoi",  batch1Rate: 0.1874, batch2Rate: 0 },
+  { materialId: "m_michinh", batch1Rate: 0.2,  batch2Rate: 0 },
+  { materialId: "m_cbq",   batch1Rate: 0.075,  batch2Rate: 0 },
+  { materialId: "m_hhht",  batch1Rate: 1,      batch2Rate: 0 },
+  { materialId: "m_xay",   batch1Rate: 0,      batch2Rate: 0 },
+  { materialId: "m_gio",   batch1Rate: 0,      batch2Rate: 0 },
 ];
 
 // ---------- Production days ----------
@@ -191,42 +200,48 @@ export const STOCK_TRANSFERS: StockTransfer[] = [
   { id: "t1", transferCode: "TR-2026-000001", transferDate: daysAgo(1), productId: "p_tt", qtyKg: 60, status: "received", receivedBy: "u_hieu", receivedAt: daysAgo(1) },
 ];
 
-// Tồn kho thành phẩm tại Kho CL Hà Nội (bán hàng trừ từ đây)
+// Tồn kho thành phẩm tại Kho Cát Linh (bán hàng trừ từ đây)
 export const CL_INVENTORY: ClInventory[] = [
   { productId: "p_tt",   qtyKg: 35 },
   { productId: "p_ttc",  qtyKg: 12 },
+  { productId: "p_ngan", qtyKg: 6 },
   { productId: "p_vun",  qtyKg: 5 },
   { productId: "p_cham", qtyKg: 80 },
   { productId: "p_ram",  qtyKg: 8 },
 ];
 
-// Tồn kho thành phẩm tại Xưởng Đông Anh (sản xuất + recover cộng vào đây; chuyển kho trừ ra)
+// Tồn kho thành phẩm tại Xưởng (sản xuất cộng vào đây; chuyển kho trừ ra)
 export const FACTORY_INVENTORY: ClInventory[] = [
   { productId: "p_tt",   qtyKg: 18 },
   { productId: "p_ttc",  qtyKg: 5 },
+  { productId: "p_ngan", qtyKg: 4 },
   { productId: "p_vun",  qtyKg: 2 },
   { productId: "p_cham", qtyKg: 10 },
   { productId: "p_ram",  qtyKg: 3 },
 ];
 
+// Kho Recover riêng — hàng MCK đã hút lại tại xưởng, chờ chuyển về Cát Linh
+export const RECOVER_INVENTORY: ClInventory[] = [];
+
 export const EXPENSES: Expense[] = [];
 export const RECOVERY_LOGS: RecoveryLog[] = [];
 export const DESTRUCTION_LOGS: DestructionLog[] = [];
+export const MCK_LOGS: MckLog[] = [];
 export const ATTENDANCE: Attendance[] = [];
 export const PAYROLL_PERIODS: PayrollPeriod[] = [];
 export const NEW_CUSTOMER_CREDITS: NewCustomerCredit[] = [];
 
 export const DEFAULT_SETTINGS: AppSettings = {
   defaultCommissionPct: 5,
+  defaultDebtCommissionPct: 3,
   defaultEarlyPayPct: 2,
-  newCustomerBonus: 100000,
-  attitudeBonus: 1000000,
   factoryBatchThreshold: 10,
   factoryExtraBatchBonus: 150000,
-  crossCommissionPct: 1,
-  crossCommissionFromSaleId: "u_hoa",
-  crossCommissionToProfileId: "u_hieu",
+  factoryOvertimeDayBonus: 200000,
   nvlWarningDays: 3,
+  standardOutputPerBatch2: 33.5,   // sổ: sản lượng chuẩn / mẻ 2
+  materialCostPerBatch2: 1674323,  // sổ: chi phí NVL / mẻ 2
+  plannedBatchesPerDay: 8,         // số mẻ dự kiến/ngày cho dự báo NVL
 };
 
 // Quận/huyện Hà Nội (khu vực sale). Ngoại tỉnh/khác → cho phép nhập tay ở form.

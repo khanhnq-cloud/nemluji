@@ -21,7 +21,11 @@ export default function UsersPage() {
 
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const blank = (): Partial<Profile> => ({ role: "sale", status: "active", baseSalary: 0, commissionPct: 5 });
+  const blank = (): Partial<Profile> => ({
+    role: "sale", status: "active", baseSalary: 0,
+    commissionPct: state.settings.defaultCommissionPct,
+    debtCommissionPct: state.settings.defaultDebtCommissionPct,
+  });
   const [f, setF] = useState<Partial<Profile>>(blank());
 
   const openAdd = () => { setEditId(null); setF(blank()); setOpen(true); };
@@ -41,13 +45,16 @@ export default function UsersPage() {
     const dupe = state.profiles.some(p => p.email.toLowerCase() === f.email!.toLowerCase() && p.id !== editId);
     if (dupe) { alert("Email đã tồn tại"); return; }
     const role = (f.role as Role) || "sale";
+    const isSaleGroup = role === "sale" || role === "manager";
     const profile: Profile = {
       id: editId || newId(),
       fullName: f.fullName!,
       email: f.email!,
       role,
       baseSalary: Number(f.baseSalary || 0),
-      commissionPct: Number(f.commissionPct || 0),
+      commissionPct: isSaleGroup ? Number(f.commissionPct || 0) : 0,
+      debtCommissionPct: isSaleGroup ? Number(f.debtCommissionPct || 0) : undefined,
+      factoryLevel: role === "factory_da" ? (f.factoryLevel || "staff") : undefined,
       region: f.region || undefined,
       status: (f.status as Profile["status"]) || "active",
     };
@@ -82,7 +89,7 @@ export default function UsersPage() {
         <table className="table-base">
           <thead><tr>
             <th>Họ tên</th><th>Email</th><th>Vai trò</th><th>Khu vực</th>
-            <th className="text-right">Lương cứng</th><th className="text-right">% HH</th>
+            <th className="text-right">Lương cứng</th><th className="text-right">% HH đơn</th><th className="text-right">% HH công nợ</th>
             <th>Trạng thái</th><th>Mật khẩu</th>{canManage && <th></th>}
           </tr></thead>
           <tbody>
@@ -90,10 +97,14 @@ export default function UsersPage() {
               <tr key={p.id}>
                 <td className="font-medium">{p.fullName}{p.id === user?.id && <span className="badge-blue ml-1">Bạn</span>}</td>
                 <td>{p.email}</td>
-                <td><span className="badge-blue">{ROLE_LABEL[p.role]}</span></td>
+                <td>
+                  <span className="badge-blue">{ROLE_LABEL[p.role]}</span>
+                  {p.role === "factory_da" && <span className="badge-gray ml-1">{p.factoryLevel === "manager" ? "Quản lý" : "Nhân viên"}</span>}
+                </td>
                 <td>{p.region || "—"}</td>
                 <td className="text-right">{formatMoney(p.baseSalary)}</td>
                 <td className="text-right">{p.commissionPct ? formatPct(p.commissionPct) : "—"}</td>
+                <td className="text-right">{p.debtCommissionPct ? formatPct(p.debtCommissionPct) : "—"}</td>
                 <td><StatusBadge status={p.status} /></td>
                 <td><code className="bg-gray-100 px-2 py-0.5 rounded text-xs">123456</code></td>
                 {canManage && (
@@ -138,7 +149,21 @@ export default function UsersPage() {
             </select>
           </div>
           <div><label className="label">Lương cứng (đ)</label><input type="number" className="input" value={f.baseSalary ?? 0} onChange={e => setF(x => ({ ...x, baseSalary: Number(e.target.value) }))} /></div>
-          <div><label className="label">% Hoa hồng</label><input type="number" step="0.1" className="input" value={f.commissionPct ?? 0} onChange={e => setF(x => ({ ...x, commissionPct: Number(e.target.value) }))} /></div>
+          {(f.role === "sale" || f.role === "manager") && (
+            <>
+              <div><label className="label">% Hoa hồng đơn hàng</label><input type="number" step="0.1" className="input" value={f.commissionPct ?? 0} onChange={e => setF(x => ({ ...x, commissionPct: Number(e.target.value) }))} /></div>
+              <div><label className="label">% Hoa hồng công nợ kỳ trước</label><input type="number" step="0.1" className="input" value={f.debtCommissionPct ?? 0} onChange={e => setF(x => ({ ...x, debtCommissionPct: Number(e.target.value) }))} /></div>
+            </>
+          )}
+          {f.role === "factory_da" && (
+            <div>
+              <label className="label">Cấp bậc xưởng *</label>
+              <select className="input" value={f.factoryLevel || "staff"} onChange={e => setF(x => ({ ...x, factoryLevel: e.target.value as Profile["factoryLevel"] }))}>
+                <option value="staff">Nhân viên xưởng</option>
+                <option value="manager">Quản lý xưởng (có mẻ làm thêm)</option>
+              </select>
+            </div>
+          )}
           <div>
             <label className="label">Trạng thái</label>
             <select className="input" value={f.status} onChange={e => setF(x => ({ ...x, status: e.target.value as Profile["status"] }))}>

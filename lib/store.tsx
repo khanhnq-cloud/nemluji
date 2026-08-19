@@ -4,13 +4,13 @@ import type {
   Profile, Customer, CustomerBranch, Product, Order, Receipt,
   DebtStatement, Lead, Material, ProductionRecipe, ProductionDay,
   StockTransfer, ClInventory, Attendance, PayrollPeriod, RecoveryLog,
-  DestructionLog, NewCustomerCredit, AppSettings, Expense,
+  DestructionLog, NewCustomerCredit, AppSettings, Expense, MckLog,
 } from "@/types";
 import {
   PROFILES, CUSTOMERS, CUSTOMER_BRANCHES, PRODUCTS, ORDERS, RECEIPTS,
   DEBT_STATEMENTS, LEADS, MATERIALS, RECIPES, PRODUCTION_DAYS,
-  STOCK_TRANSFERS, CL_INVENTORY, FACTORY_INVENTORY, RECOVERY_LOGS, DESTRUCTION_LOGS,
-  ATTENDANCE, PAYROLL_PERIODS, NEW_CUSTOMER_CREDITS, DEFAULT_SETTINGS, EXPENSES,
+  STOCK_TRANSFERS, CL_INVENTORY, FACTORY_INVENTORY, RECOVER_INVENTORY, RECOVERY_LOGS, DESTRUCTION_LOGS,
+  MCK_LOGS, ATTENDANCE, PAYROLL_PERIODS, NEW_CUSTOMER_CREDITS, DEFAULT_SETTINGS, EXPENSES,
 } from "./mock-data";
 
 export type State = {
@@ -28,9 +28,11 @@ export type State = {
   transfers: StockTransfer[];
   clInventory: ClInventory[];
   factoryInventory: ClInventory[];
+  recoverInventory: ClInventory[];
   expenses: Expense[];
   recoveryLogs: RecoveryLog[];
   destructionLogs: DestructionLog[];
+  mckLogs: MckLog[];
   attendance: Attendance[];
   payrollPeriods: PayrollPeriod[];
   newCustomerCredits: NewCustomerCredit[];
@@ -55,16 +57,20 @@ const initial: State = {
   transfers: STOCK_TRANSFERS,
   clInventory: CL_INVENTORY,
   factoryInventory: FACTORY_INVENTORY,
+  recoverInventory: RECOVER_INVENTORY,
   expenses: EXPENSES,
   recoveryLogs: RECOVERY_LOGS,
   destructionLogs: DESTRUCTION_LOGS,
+  mckLogs: MCK_LOGS,
   attendance: ATTENDANCE,
   payrollPeriods: PAYROLL_PERIODS,
   newCustomerCredits: NEW_CUSTOMER_CREDITS,
   settings: DEFAULT_SETTINGS,
 };
 
-const STORAGE_KEY = "nnnt_state_v5";
+// v7: Sổ Xưởng (ProductionDay đổi cấu trúc) + MCK + kho recover + cấu hình xưởng.
+// Dữ liệu localStorage cũ không tương thích nên đổi key để nạp lại mặc định.
+const STORAGE_KEY = "nnnt_state_v7";
 const StoreCtx = createContext<Ctx | null>(null);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
@@ -74,7 +80,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     try {
       const raw = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
-      if (raw) setState({ ...initial, ...JSON.parse(raw) });
+      if (raw) {
+        const saved = JSON.parse(raw) as Partial<State>;
+        // settings merge sâu để cấu hình mới thêm sau này vẫn có giá trị mặc định
+        setState({ ...initial, ...saved, settings: { ...initial.settings, ...(saved.settings || {}) } });
+      }
     } catch {}
     setHydrated(true);
   }, []);

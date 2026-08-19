@@ -15,7 +15,10 @@ import {
   formatDate, formatTime, formatDateTime, formatKg, formatMoney, formatNumber, newId, nextSequentialCode, todayISO,
   PAYMENT_STATUS_LABEL, CUSTOMER_GROUP_LABEL, COMPANY_ASSIGNEE,
 } from "@/lib/utils";
-import { Plus, Trash2, X, Gift, Eye, Download, Warehouse, UserPlus } from "lucide-react";
+import { Plus, Trash2, X, Gift, Eye, Download, Warehouse, UserPlus, Filter, HandCoins } from "lucide-react";
+import MckModal from "@/components/MckModal";
+import ExpenseModal from "@/components/ExpenseModal";
+import { summarizeFinanceDay } from "@/lib/finance";
 import type { Customer, CustomerBranch, CustomerGroup, Order, OrderItem, PaymentStatus } from "@/types";
 
 const ORDER_PAYMENT_STATUSES: PaymentStatus[] = ["cash_done", "da_ck", "chua_ck", "cong_no"];
@@ -59,6 +62,8 @@ export default function OrdersPage() {
   const { state, update } = useStore();
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
+  const [mckOpen, setMckOpen] = useState(false);
+  const [expenseOpen, setExpenseOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [fSale, setFSale] = useState("");
   const [fPay, setFPay] = useState("");
@@ -342,7 +347,9 @@ export default function OrdersPage() {
         actions={
           <>
             <button className="btn-secondary" onClick={exportExcel} disabled={filtered.length === 0}><Download className="h-4 w-4" /> Xuất Excel</button>
+            {can(user?.role, "manage_orders") && <button className="btn-secondary" onClick={() => setMckOpen(true)}><Filter className="h-4 w-4" /> Lọc hàng</button>}
             {can(user?.role, "manage_orders") && <button className="btn-primary" onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> Tạo đơn</button>}
+            {can(user?.role, "manage_expenses") && <button className="btn-primary" onClick={() => setExpenseOpen(true)}><HandCoins className="h-4 w-4" /> Tạo phiếu chi</button>}
           </>
         }
       />
@@ -458,8 +465,14 @@ export default function OrdersPage() {
         {filtered.length === 0 && <EmptyState />}
       </div>
 
+      {/* F8 — Chốt tiền cuối ngày (hôm nay) */}
+      {can(user?.role, "view_expenses") && <DaySettlement />}
+
       {/* Modal chi tiết đơn */}
       <OrderDetailModal order={detail} onClose={() => setDetailId(null)} />
+
+      <MckModal open={mckOpen} onClose={() => setMckOpen(false)} />
+      <ExpenseModal open={expenseOpen} onClose={() => setExpenseOpen(false)} />
 
       <Modal open={open} onClose={() => { setOpen(false); resetForm(); }} title="Tạo đơn hàng" size="xl" footer={
         <>
@@ -762,4 +775,31 @@ function OrderDetailModal({ order, onClose }: { order: Order | null; onClose: ()
 
 function Info({ label, value }: { label: string; value: string }) {
   return <div className="border border-gray-200 rounded-md p-2.5"><div className="text-xs text-gray-500">{label}</div><div className="font-medium mt-0.5">{value}</div></div>;
+}
+
+function DaySettlement() {
+  const { state } = useStore();
+  const [date, setDate] = useState(todayISO());
+  const fin = useMemo(
+    () => summarizeFinanceDay(state.orders, state.receipts, state.expenses, date),
+    [state.orders, state.receipts, state.expenses, date],
+  );
+  return (
+    <div className="card p-4 border-emerald-200 bg-emerald-50/30">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <div className="text-sm font-semibold text-gray-800">Chốt tiền cuối ngày</div>
+        <input type="date" className="input w-44" value={date} max={todayISO()} onChange={e => setDate(e.target.value)} aria-label="Ngày chốt tiền" />
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+        <div><div className="text-xs text-gray-500">Tiền hàng nhận về</div><div className="font-semibold text-emerald-700">{formatMoney(fin.actualRevenue)}</div><div className="text-xs text-gray-400">Phiếu thu đã duyệt</div></div>
+        <div><div className="text-xs text-gray-500">Σ phiếu chi</div><div className="font-semibold text-red-600">{formatMoney(fin.expenses)}</div><div className="text-xs text-gray-400">{fin.expenseCount} phiếu</div></div>
+        <div><div className="text-xs text-gray-500">Σ phí ship</div><div className="font-semibold text-red-600">{formatMoney(fin.shippingCost)}</div><div className="text-xs text-gray-400">{fin.shippingOrderCount} đơn có ship</div></div>
+        <div><div className="text-xs text-gray-500">Tổng chi phí</div><div className="font-semibold text-red-600">{formatMoney(fin.totalCost)}</div><div className="text-xs text-gray-400">phiếu chi + ship</div></div>
+      </div>
+      <div className="border-t border-emerald-200 mt-3 pt-3 flex items-center justify-between">
+        <span className="text-sm font-semibold text-gray-800">Tổng tiền = tiền hàng nhận về − tổng chi phí</span>
+        <span className={`text-lg font-bold ${fin.netCash < 0 ? "text-red-600" : "text-emerald-700"}`}>{formatMoney(fin.netCash)}</span>
+      </div>
+    </div>
+  );
 }

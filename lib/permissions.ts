@@ -64,13 +64,17 @@ const matrix: Record<Role, Action[]> = {
     "view_debts", "view_leads", "manage_leads",
     "view_payroll_self",
   ],
+  // Nhân viên Kho Cát Linh: xem được TOÀN BỘ (gồm cả khối Xưởng ở chế độ xem),
+  // quản lý bán hàng + xác nhận nhận hàng. Không sửa dữ liệu xưởng, không duyệt tiền.
   warehouse_hn: [
     "view_dashboard",
-    "view_customers",
+    "view_customers", "manage_customers",
     "view_orders", "manage_orders",
     "view_receipts", "create_receipt",
-    "view_debts",
-    "view_materials", "confirm_transfer", "view_warehouse_hn",
+    "view_debts", "view_expenses", "manage_expenses",
+    "view_leads",
+    "view_production", "view_materials", "confirm_transfer", "view_warehouse_hn",
+    "view_reports",
     "view_payroll_self",
   ],
   factory_da: [

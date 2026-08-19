@@ -28,8 +28,14 @@ export function summarizeFinanceRange(
   );
   const rangeExpenses = expenses.filter(expense => inRange(expense.date, range));
 
+  const actualRevenue = approvedReceipts.reduce((sum, receipt) => sum + Number(receipt.amount || 0), 0);
+  // Phí ship dương = tiền phải trả cho vận chuyển (âm = cty được bù) → tính phần dương vào chi phí
+  const shippingCost = activeOrders.reduce((sum, order) => sum + Math.max(0, Number(order.shipFee || 0)), 0);
+  const expensesTotal = rangeExpenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+  const totalCost = shippingCost + expensesTotal;
+
   return {
-    actualRevenue: approvedReceipts.reduce((sum, receipt) => sum + Number(receipt.amount || 0), 0),
+    actualRevenue,
     projectedRevenue: activeOrders.reduce((sum, order) => sum + Number(order.revenueNet || 0), 0),
     cashReceived: approvedReceipts.filter(isCashReceipt).reduce((sum, receipt) => sum + Number(receipt.amount || 0), 0),
     bankReceived: approvedReceipts.filter(receipt => !isCashReceipt(receipt)).reduce((sum, receipt) => sum + Number(receipt.amount || 0), 0),
@@ -40,9 +46,12 @@ export function summarizeFinanceRange(
       .filter(order => order.paymentStatus === "cong_no")
       .reduce((sum, order) => sum + Number(order.revenueNet || 0), 0),
     shipping: activeOrders.reduce((sum, order) => sum + Number(order.shipFee || 0), 0),
+    shippingCost,
     shippingOrderCount: activeOrders.filter(order => Number(order.shipFee || 0) !== 0).length,
-    expenses: rangeExpenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0),
+    expenses: expensesTotal,
     expenseCount: rangeExpenses.length,
+    totalCost,               // Σ phiếu chi + Σ phí ship (phần dương)
+    netCash: actualRevenue - totalCost, // Tổng tiền = tiền hàng nhận về − tổng chi phí
   };
 }
 

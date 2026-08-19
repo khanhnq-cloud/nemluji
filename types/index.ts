@@ -11,13 +11,18 @@ export type Role =
   | "factory_da"
   | "accountant";
 
+// Cấp bậc trong xưởng — quyết định công thức lương (chỉ quản lý mới có mẻ làm thêm)
+export type FactoryLevel = "manager" | "staff";
+
 export interface Profile {
   id: string;
   fullName: string;
   email: string;
   role: Role;
   baseSalary: number;
-  commissionPct: number; // %, mặc định 5
+  commissionPct: number; // % hoa hồng trên đơn đã thu tiền, mặc định 5
+  debtCommissionPct?: number; // % hoa hồng trên công nợ kỳ trước thu được
+  factoryLevel?: FactoryLevel; // chỉ dùng khi role = factory_da, mặc định staff
   region?: string;
   status: "active" | "inactive";
 }
@@ -70,7 +75,13 @@ export interface Product {
   defaultPrice: number;
   fixCost: number; // giá vốn cố định (dùng cho cost + hàng tặng)
   isActive: boolean;
+  isFactoryOutput?: boolean; // là thành phẩm của xưởng → hiện thành cột trong Sổ Xưởng
 }
+
+// Số lượng thành phẩm theo sản phẩm (tồn kho / output / chuyển kho tách loại)
+export interface ProductQty { productId: string; qtyKg: number; }
+// Số lượng NVL theo nguyên liệu (tồn đầu / cuối / nhập thêm trong Sổ Xưởng)
+export interface MaterialQty { materialId: string; qty: number; }
 
 export type PaymentStatus = "cash_done" | "da_ck" | "chua_ck" | "cong_no" | "tang";
 
@@ -223,6 +234,7 @@ export interface Material {
   warningDays: number; // mặc định 3
   qty: number; // tồn kho hiện tại
   isActive: boolean;
+  sortOrder?: number; // thứ tự cột trong Sổ Xưởng
 }
 
 export interface ProductionRecipe {
@@ -245,6 +257,7 @@ export interface ProductionDay {
   productionDate: string;
   batch1Count: number;
   batch2Count: number;
+  // Tổng (dẫn xuất từ các mảng bên dưới — giữ để tương thích dashboard/report)
   outputKg: number;
   transferToClKg: number;
   factoryStockKgEnd: number;
@@ -257,15 +270,36 @@ export interface ProductionDay {
   closedBy?: string;
   closedAt?: string;
   note?: string;
+
+  // --- Sổ Xưởng: chi tiết theo loại thành phẩm ---
+  outputs?: ProductQty[];        // Ra thành phẩm, tách TT/TTC/Ngắn/Vụn...
+  transfersOut?: ProductQty[];   // Mang về Kho CL, tách loại
+  factoryStockOpen?: ProductQty[];  // Kho Xưởng đầu ngày = tồn cuối ngày SX trước
+  factoryStockEnd?: ProductQty[];   // Tổng Kho Xưởng = open + output − transferOut
+
+  // --- Sổ Xưởng: chi tiết NVL trong ngày ---
+  materialOpening?: MaterialQty[];   // tồn đầu ngày
+  materialClosing?: MaterialQty[];   // tồn cuối ngày (tự trừ định mức)
+  materialIntake?: MaterialQty[];    // dòng "+nhập" trong ngày
+
+  // --- Snapshot cấu hình tại thời điểm chốt (giữ toàn vẹn lịch sử) ---
+  recipeSnapshot?: ProductionRecipe[];
+  standardOutputPerBatch2?: number;  // sản lượng chuẩn / mẻ 2
+  materialCostPerBatch2?: number;    // chi phí NVL / mẻ 2
+  lossPerBatch?: number;             // hao hụt / mẻ
+  materialStockValueEnd?: number;    // giá trị tồn NVL cuối ngày
 }
 
 export interface RecoveryLog {
   id: string;
   logDate: string;
-  productId: string; // sản phẩm recover (hút chân không → về tồn kho xưởng)
+  productId: string; // sản phẩm recover (hút chân không lại → về kho recover)
   qtyKg: number;
   note?: string;
   createdBy: string;
+  mckLogId?: string;        // nguồn: hàng MCK cần recover
+  transferId?: string;      // phiếu chuyển CL → Xưởng
+  sentToFactoryDate?: string; // ngày chuyển sang xưởng
 }
 
 export interface DestructionLog {
@@ -283,6 +317,7 @@ export interface DestructionLog {
 
 export type ExpenseType =
   | "destruction"
+  | "mck_ship"
   | "factory_extra"
   | "shipping"
   | "materials"
@@ -307,6 +342,8 @@ export interface Expense {
   createdAt?: string;
 }
 
+export type TransferDirection = "factory_to_cl" | "cl_to_factory" | "recover_to_cl";
+
 export interface StockTransfer {
   id: string;
   transferCode: string; // TR-2026-000001
@@ -317,6 +354,34 @@ export interface StockTransfer {
   receivedBy?: string;
   receivedAt?: string;
   note?: string;
+  direction?: TransferDirection; // mặc định factory_to_cl (tương thích dữ liệu cũ)
+  shipFee?: number;              // phí ship (chuyển MCK về xưởng) → sinh phiếu chi
+  expenseId?: string;           // phiếu chi phí ship
+  mckLogId?: string;            // nguồn hàng MCK
+}
+
+// --- MCK: hàng mất chân không tại Kho Cát Linh ---
+export type MckStatus =
+  | "pending"         // chờ xử lý tại CL
+  | "revacuumed_cl"   // hút lại được tại CL → về tồn bán được
+  | "destroyed"       // tiêu huỷ
+  | "sent_to_factory" // đã tạo phiếu chuyển về xưởng
+  | "recovered"       // xưởng đã hút lại → kho recover
+  | "returned_cl";    // đã chuyển lại về CL
+
+export interface MckLog {
+  id: string;
+  code: string; // MCK-2026-000001
+  logDate: string;
+  productId: string;
+  qtyKg: number;
+  status: MckStatus;
+  transferId?: string;     // phiếu chuyển CL → Xưởng
+  destructionId?: string;
+  expenseId?: string;
+  resolvedQty?: number;    // đã xử lý (hút lại/tiêu huỷ/chuyển)
+  note?: string;
+  createdBy: string;
 }
 
 export interface ClInventory {
@@ -332,17 +397,39 @@ export interface Attendance {
   note?: string;
 }
 
+// 3 nhóm tính lương (mục 12.5 / 12.10)
+export type PayrollGroup = "sale" | "factory_manager" | "factory_staff" | "standard";
+
 export interface PayrollLine {
   id: string;
   profileId: string;
-  baseSalary: number;
+  group: PayrollGroup;
+
+  baseSalary: number; // lương cứng theo hồ sơ (đủ tháng)
+  baseSalaryEarned: number; // thực nhận: nhóm xưởng chia theo ngày công, còn lại = baseSalary
+
+  // --- Nhóm xưởng ---
+  monthDays: number; // số ngày trong tháng
+  workedDays: number; // số ngày đi làm
+  extraBatches: number; // số mẻ làm thêm (chỉ quản lý xưởng)
+  extraBatchRate: number; // chi phí / mẻ
+  extraBatchesAmount: number;
+  overtimeDays: number; // số ngày làm tăng ca
+  overtimeDayRate: number; // chi phí / ngày
+  overtimeAmount: number;
+
+  // --- Nhóm sale + quản lý ---
+  commissionPct: number; // % hoa hồng đơn đã thu tiền trong tháng
+  commissionBase: number;
   commissionAmount: number;
-  crossCommission: number;
-  newCustomerBonus: number;
-  extraBatchesBonus: number;
-  attitudeBonus: number;
-  otherBonus: number;
-  offDayDeduction: number;
+  debtCommissionPct: number; // % hoa hồng công nợ kỳ trước thu được trong tháng
+  debtCommissionBase: number;
+  debtCommissionAmount: number;
+
+  // --- Chung ---
+  adjustment: number; // thưởng (+) / phạt (−) tuỳ chỉnh
+  adjustmentReason?: string;
+
   total: number;
   note?: string;
 }
@@ -369,14 +456,14 @@ export interface NewCustomerCredit {
 }
 
 export interface AppSettings {
-  defaultCommissionPct: number;
+  defaultCommissionPct: number; // % hoa hồng đơn đã thu tiền
+  defaultDebtCommissionPct: number; // % hoa hồng công nợ kỳ trước thu được
   defaultEarlyPayPct: number;
-  newCustomerBonus: number;
-  attitudeBonus: number;
-  factoryBatchThreshold: number; // mẻ thường = 10
-  factoryExtraBatchBonus: number; // 150000
-  crossCommissionPct: number; // 1%
-  crossCommissionFromSaleId?: string; // sale nào
-  crossCommissionToProfileId?: string; // kho nào
+  factoryBatchThreshold: number; // mẻ thường/ngày = 10, vượt ngưỡng tính mẻ làm thêm
+  factoryExtraBatchBonus: number; // chi phí / mẻ làm thêm
+  factoryOvertimeDayBonus: number; // chi phí / ngày làm tăng ca
   nvlWarningDays: number; // 3
+  standardOutputPerBatch2: number; // sản lượng chuẩn / mẻ 2 (sổ: 33.5) → hao hụt/mẻ
+  materialCostPerBatch2: number;   // chi phí NVL / mẻ 2 (sổ: 1.674.323) → giá thành/kg
+  plannedBatchesPerDay: number;    // số mẻ dự kiến/ngày cho dự báo NVL còn dùng được
 }
