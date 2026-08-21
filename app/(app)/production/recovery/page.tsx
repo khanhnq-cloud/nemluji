@@ -84,7 +84,7 @@ export default function RecoveryPage() {
     const expense: Expense = {
       id: expenseId, code: nextSequentialCode("PC", state.expenses.map(e => e.code)), date: df.logDate, type: "destruction",
       amount: total, refId: logId,
-      note: `Tiêu huỷ ${df.qtyKg}kg ${prod?.name} (${df.warehouse === "factory" ? "Xưởng" : "Kho CL"})${df.reason ? " — " + df.reason : ""}`,
+      note: `Tiêu huỷ ${df.qtyKg}kg ${prod?.name} (${df.warehouse === "factory" ? "Xưởng" : "Kho Cát Linh"})${df.reason ? " — " + df.reason : ""}`,
       createdBy: user!.id, createdAt: new Date().toISOString(),
     };
     const log: DestructionLog = {

@@ -4,6 +4,7 @@ import Modal from "@/components/Modal";
 import EmptyState from "@/components/EmptyState";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { invQty } from "@/lib/inventory";
 import { createMck, revacuumCl, destroyMck, recoverMckToFactory, mckRemaining } from "@/lib/mck-actions";
 import { formatDate, formatKg, formatMoney, todayISO } from "@/lib/utils";
@@ -14,6 +15,9 @@ type ActionType = "revacuum" | "destroy" | "recover";
 export default function MckModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { state, update } = useStore();
   const { user } = useAuth();
+  // Tiêu huỷ / Recover đều sinh phiếu chi → chỉ ai được tạo phiếu chi mới được xử lý 2 nhánh này.
+  // Hút lại tại Cát Linh không phát sinh tiền nên không cần gate này.
+  const canFinance = can(user?.role, "manage_expenses");
 
   const sellableProducts = useMemo(() => state.products.filter(p => p.isActive), [state.products]);
   const [rf, setRf] = useState({ logDate: todayISO(), productId: "", qtyKg: 0, note: "" });
@@ -44,6 +48,7 @@ export default function MckModal({ open, onClose }: { open: boolean; onClose: ()
 
   const confirmAction = () => {
     if (!action) return;
+    if ((action.type === "destroy" || action.type === "recover") && !canFinance) return;
     const m = state.mckLogs.find(x => x.id === action.mckId);
     if (!m) return;
     if (aQty <= 0 || aQty > mckRemaining(m)) { alert("Số lượng không hợp lệ"); return; }
@@ -87,8 +92,8 @@ export default function MckModal({ open, onClose }: { open: boolean; onClose: ()
                   <td className="text-right font-medium">{formatKg(mckRemaining(m))}</td>
                   <td className="whitespace-nowrap space-x-1 text-right">
                     <button className="btn-ghost btn-sm text-emerald-700" onClick={() => startAction(m.id, "revacuum")}><RotateCcw className="h-3.5 w-3.5" /> Hút lại</button>
-                    <button className="btn-ghost btn-sm text-red-600" onClick={() => startAction(m.id, "destroy")}><Trash2 className="h-3.5 w-3.5" /> Tiêu huỷ</button>
-                    <button className="btn-ghost btn-sm text-blue-700" onClick={() => startAction(m.id, "recover")}><Truck className="h-3.5 w-3.5" /> Recover</button>
+                    {canFinance && <button className="btn-ghost btn-sm text-red-600" onClick={() => startAction(m.id, "destroy")}><Trash2 className="h-3.5 w-3.5" /> Tiêu huỷ</button>}
+                    {canFinance && <button className="btn-ghost btn-sm text-blue-700" onClick={() => startAction(m.id, "recover")}><Truck className="h-3.5 w-3.5" /> Recover</button>}
                   </td>
                 </tr>
               ))}

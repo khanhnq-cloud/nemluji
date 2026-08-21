@@ -22,7 +22,10 @@ export default function TransfersPage() {
   const { state, update } = useStore();
   const { user } = useAuth();
   const canCreate = can(user?.role, "create_transfer");
-  const canConfirm = can(user?.role, "confirm_transfer");
+  const canConfirmCl = can(user?.role, "confirm_transfer");
+  const canConfirmFactory = can(user?.role, "confirm_transfer_factory");
+  const canManageRecovery = can(user?.role, "manage_recovery");
+  const canManageExpenses = can(user?.role, "manage_expenses");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<{ transferDate: string; productId: string; qtyKg: number; note?: string }>({
     transferDate: todayISO(), productId: "", qtyKg: 0,
@@ -64,23 +67,40 @@ export default function TransfersPage() {
       if (dir === "factory_to_cl" || dir === "recover_to_cl") {
         return { ...s, transfers, clInventory: adjustInventory(s.clInventory, t.productId, t.qtyKg) };
       }
-      // MCK về xưởng đã nhận → chuyển log MCK sang "recovered-ready" (đánh dấu recovered? giữ sent_to_factory, recover page hiển thị khi received)
+      // MCK về xưởng đã nhận → hiện trong "MCK cần recover" (recovery page lọc theo status received)
       return { ...s, transfers };
     });
   };
 
+  // Huỷ phiếu chờ nhận — hoàn tồn kho nguồn + hoàn bút toán liên quan theo từng chiều
   const cancelTransfer = (id: string) => {
-    if (!confirm("Huỷ phiếu chuyển? Hàng sẽ hoàn lại tồn kho Xưởng.")) return;
+    const t = state.transfers.find(x => x.id === id);
+    if (!t || t.status !== "pending") return;
+    if (!confirm("Huỷ phiếu chuyển? Hàng và các bút toán liên quan (nếu có) sẽ được hoàn lại.")) return;
     update(s => {
-      const t = s.transfers.find(x => x.id === id);
-      if (!t || t.status !== "pending" || (t.direction || "factory_to_cl") !== "factory_to_cl") return s;
-      return {
-        ...s,
-        transfers: s.transfers.map(x => x.id === id ? { ...x, status: "cancelled" as const } : x),
-        factoryInventory: adjustInventory(s.factoryInventory, t.productId, t.qtyKg),
-      };
+      const cur = s.transfers.find(x => x.id === id);
+      if (!cur || cur.status !== "pending") return s;
+      const dir = cur.direction || "factory_to_cl";
+      const transfers = s.transfers.map(x => x.id === id ? { ...x, status: "cancelled" as const } : x);
+      if (dir === "factory_to_cl") {
+        return { ...s, transfers, factoryInventory: adjustInventory(s.factoryInventory, cur.productId, cur.qtyKg) };
+      }
+      if (dir === "recover_to_cl") {
+        return { ...s, transfers, recoverInventory: adjustInventory(s.recoverInventory, cur.productId, cur.qtyKg) };
+      }
+      // cl_to_factory (MCK) → hoàn tồn Cát Linh, lùi trạng thái MCK, huỷ phiếu chi ship nếu có
+      const mckLogs = cur.mckLogId
+        ? s.mckLogs.map(m => m.id === cur.mckLogId
+            ? { ...m, resolvedQty: Math.max(0, +((m.resolvedQty || 0) - cur.qtyKg).toFixed(2)), status: "pending" as const }
+            : m)
+        : s.mckLogs;
+      const expenses = cur.expenseId ? s.expenses.filter(e => e.id !== cur.expenseId) : s.expenses;
+      return { ...s, transfers, clInventory: adjustInventory(s.clInventory, cur.productId, cur.qtyKg), mckLogs, expenses };
     });
   };
+
+  const canCancel = (dir: TransferDirection) =>
+    dir === "factory_to_cl" ? canCreate : dir === "recover_to_cl" ? canManageRecovery : canManageExpenses;
 
   const pendingFactoryToCl = state.transfers.filter(t => t.status === "pending" && (t.direction || "factory_to_cl") === "factory_to_cl").length;
 
@@ -88,7 +108,7 @@ export default function TransfersPage() {
     <div className="space-y-4">
       <PageHeader
         title="Chuyển kho (Xưởng → Cát Linh)"
-        subtitle="Tạo phiếu theo tồn từng loại • Kho Cát Linh bấm 'Xác nhận đã nhận' mới cộng tồn"
+        subtitle="Tạo phiếu theo tồn từng loại • Bên nhận (Cát Linh hoặc Xưởng, theo chiều) bấm 'Xác nhận đã nhận' mới cộng tồn"
         actions={canCreate && <button className="btn-primary" onClick={() => openCreate()}><Plus className="h-4 w-4" /> Tạo phiếu chuyển</button>}
       />
 
@@ -140,10 +160,10 @@ export default function TransfersPage() {
                   <td><TransferBadge status={t.status} /></td>
                   <td>{receiver?.fullName || "—"}</td>
                   <td className="whitespace-nowrap space-x-1">
-                    {t.status === "pending" && canConfirm && (
+                    {t.status === "pending" && (dir === "cl_to_factory" ? canConfirmFactory : canConfirmCl) && (
                       <button className="btn-primary btn-sm" onClick={() => confirmReceive(t.id)}><PackageCheck className="h-3.5 w-3.5" /> Xác nhận đã nhận</button>
                     )}
-                    {t.status === "pending" && dir === "factory_to_cl" && canCreate && (
+                    {t.status === "pending" && canCancel(dir) && (
                       <button className="btn-ghost btn-sm text-red-600" onClick={() => cancelTransfer(t.id)}>Huỷ</button>
                     )}
                   </td>

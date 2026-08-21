@@ -37,7 +37,7 @@ export default function WarehouseHnPage() {
         <table className="table-base">
           <thead><tr>
             <th>Sản phẩm</th><th>Đơn vị</th>
-            <th className="text-right">Tồn Xưởng (Đông Anh)</th>
+            <th className="text-right">Tồn Xưởng</th>
             <th className="text-right">Tồn Cát Linh</th>
             <th className="text-right">Tổng tồn</th>
             <th className="text-right">Giá vốn/kg</th><th className="text-right">Giá trị tồn Cát Linh</th>

@@ -19,7 +19,8 @@ export type Action =
   | "manage_materials"
   | "view_materials"
   | "create_transfer"
-  | "confirm_transfer"
+  | "confirm_transfer"          // Kho Cát Linh xác nhận hàng đến (factory_to_cl, recover_to_cl)
+  | "confirm_transfer_factory"  // Xưởng xác nhận hàng đến (cl_to_factory — MCK gửi về xưởng)
   | "manage_recovery"
   | "view_warehouse_hn"
   | "view_payroll"
@@ -39,7 +40,7 @@ const matrix: Record<Role, Action[]> = {
     "view_receipts", "create_receipt", "approve_receipt",
     "view_debts", "view_expenses", "manage_expenses", "view_leads", "manage_leads",
     "view_production", "manage_production", "manage_materials", "view_materials",
-    "create_transfer", "confirm_transfer", "manage_recovery",
+    "create_transfer", "confirm_transfer", "confirm_transfer_factory", "manage_recovery",
     "view_warehouse_hn",
     "view_payroll", "manage_payroll", "approve_payroll", "view_payroll_self",
     "view_reports", "view_financials", "manage_settings", "manage_users",
@@ -51,7 +52,7 @@ const matrix: Record<Role, Action[]> = {
     "view_receipts",
     "view_debts", "view_expenses", "manage_expenses", "view_leads", "manage_leads",
     "view_production", "manage_production", "view_materials", "manage_materials",
-    "create_transfer", "manage_recovery",
+    "create_transfer", "confirm_transfer_factory", "manage_recovery",
     "view_warehouse_hn",
     "view_payroll", "view_payroll_self",
     "view_reports",
@@ -80,7 +81,7 @@ const matrix: Record<Role, Action[]> = {
   factory_da: [
     "view_dashboard",
     "view_production", "manage_production", "view_materials",
-    "create_transfer", "manage_recovery",
+    "create_transfer", "confirm_transfer_factory", "manage_recovery",
     "view_payroll_self",
   ],
   accountant: [
