@@ -70,7 +70,8 @@ const initial: State = {
 
 // v7: Sổ Xưởng (ProductionDay đổi cấu trúc) + MCK + kho recover + cấu hình xưởng.
 // Dữ liệu localStorage cũ không tương thích nên đổi key để nạp lại mặc định.
-const STORAGE_KEY = "nnnt_state_v7";
+// v8: dọn sạch mock data (chỉ còn danh mục + 2 tài khoản) → bỏ dữ liệu localStorage cũ.
+const STORAGE_KEY = "nnnt_state_v8";
 const StoreCtx = createContext<Ctx | null>(null);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {

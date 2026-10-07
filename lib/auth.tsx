@@ -1,6 +1,7 @@
-"use client";
+﻿"use client";
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { DEMO_USERS, PROFILES } from "./mock-data";
+import { PROFILES } from "./mock-data";
+import { supabase, isSupabaseEnabled } from "./supabase";
 import type { Profile } from "@/types";
 
 type Ctx = {
@@ -11,19 +12,28 @@ type Ctx = {
 };
 
 const AuthCtx = createContext<Ctx | null>(null);
-const STORAGE_KEY = "nnnt_user_v2";
-const STORE_KEY = "nnnt_state_v5"; // đọc profiles đã chỉnh/thêm trong store
-const DEFAULT_PASSWORD = "123456";
+const STORAGE_KEY = "nnnt_user_v2"; // chỉ dùng để dọn session mock cũ
 
-// Tìm profile trong store (cho user được admin thêm/sửa ở /users)
-function findStoreProfile(email: string): Profile | null {
-  try {
-    const raw = localStorage.getItem(STORE_KEY);
-    if (!raw) return null;
-    const state = JSON.parse(raw);
-    const profiles: Profile[] = state.profiles || [];
-    return profiles.find(p => p.email?.toLowerCase() === email.toLowerCase() && p.status === "active") || null;
-  } catch { return null; }
+// Lấy profile từ bảng `profiles` theo auth uid. Phần nghiệp vụ vẫn dùng mock store
+// (tham chiếu bằng id "u_*"), nên nếu email trùng profile mock thì giữ id mock.
+async function loadSupabaseProfile(uid: string, email: string): Promise<Profile | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase.from("profiles").select("*").eq("id", uid).maybeSingle();
+  if (error || !data || data.status !== "active") return null;
+  const mock = PROFILES.find(p => p.email.toLowerCase() === email.toLowerCase());
+  return {
+    ...(mock || {}),
+    id: mock?.id ?? data.id,
+    fullName: data.full_name ?? mock?.fullName ?? email,
+    email: data.email ?? email,
+    role: data.role,
+    baseSalary: Number(data.base_salary ?? 0),
+    commissionPct: Number(data.commission_pct ?? 0),
+    debtCommissionPct: data.debt_commission_pct != null ? Number(data.debt_commission_pct) : mock?.debtCommissionPct,
+    region: data.region ?? mock?.region,
+    factoryLevel: data.factory_level ?? mock?.factoryLevel,
+    status: data.status,
+  } as Profile;
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -31,36 +41,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setUser(JSON.parse(raw));
-    } catch {}
-    setLoading(false);
+    let cancelled = false;
+    (async () => {
+      if (isSupabaseEnabled && supabase) {
+        const { data } = await supabase.auth.getSession();
+        const s = data.session;
+        const profile = s ? await loadSupabaseProfile(s.user.id, s.user.email ?? "") : null;
+        if (!cancelled) setUser(profile);
+      }
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   const login: Ctx["login"] = async (email, password) => {
-    // 1) Tài khoản demo gốc
-    const u = DEMO_USERS.find(x => x.email.toLowerCase() === email.toLowerCase() && x.password === password);
-    let profile: Profile | undefined = u ? PROFILES.find(p => p.id === u.profileId) : undefined;
-
-    // 2) Fallback: user được thêm/sửa ở /users (mật khẩu mặc định 123456)
-    if (!profile && password === DEFAULT_PASSWORD) {
-      profile = findStoreProfile(email) || undefined;
+    // Supabase Auth
+    if (isSupabaseEnabled && supabase) {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error || !data.user) return { ok: false, error: "Sai email hoặc mật khẩu" };
+      const profile = await loadSupabaseProfile(data.user.id, data.user.email ?? email);
+      if (!profile) {
+        await supabase.auth.signOut();
+        return { ok: false, error: "Tài khoản chưa có hồ sơ hoặc đã bị khoá" };
+      }
+      setUser(profile);
+      return { ok: true };
     }
-    // Ưu tiên bản ghi mới nhất trong store nếu có (email/role đã chỉnh)
-    if (profile) {
-      const fresh = findStoreProfile(profile.email);
-      if (fresh) profile = fresh;
-    }
 
-    if (!profile) return { ok: false, error: "Sai email hoặc mật khẩu" };
-    setUser(profile);
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(profile)); } catch {}
-    return { ok: true };
+    return { ok: false, error: "Chưa cấu hình Supabase (thiếu NEXT_PUBLIC_SUPABASE_URL / ANON_KEY)" };
   };
 
   const logout = () => {
     setUser(null);
+    if (isSupabaseEnabled && supabase) void supabase.auth.signOut();
     try { localStorage.removeItem(STORAGE_KEY); } catch {}
   };
 
@@ -72,3 +85,4 @@ export function useAuth() {
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
 }
+
