@@ -160,6 +160,7 @@ export const VISIT_TYPE_LABEL: Record<string, string> = {
 };
 
 export const ROLE_LABEL: Record<string, string> = {
+  superadmin: "Super Admin",
   admin: "Admin (Chủ DN)",
   manager: "Manager",
   sale: "Sale",

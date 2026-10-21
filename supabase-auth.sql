@@ -31,5 +31,6 @@ create policy profiles_admin_write on profiles for all to authenticated
 
 -- Tài khoản: tạo qua Dashboard → Authentication → Users (hoặc Admin API), rồi thêm dòng
 -- tương ứng vào profiles với id = auth.users.id, ví dụ:
---   insert into profiles (id, full_name, email, role) select id, 'Quản trị viên', email, 'admin' from auth.users where email = 'admin@nnnt.vn';
+--   insert into profiles (id, full_name, email, role) select id, 'Quản trị viên', email, 'admin' from auth.users where email = 'admin@nemluji.vn';
+
 

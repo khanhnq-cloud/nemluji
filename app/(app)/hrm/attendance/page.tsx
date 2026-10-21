@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useMemo, useState } from "react";
 import PageHeader from "@/components/PageHeader";
 import { useStore } from "@/lib/store";
@@ -24,7 +24,7 @@ export default function AttendancePage() {
     return Array.from({ length: last }, (_, i) => `${period}-${String(i + 1).padStart(2, "0")}`);
   }, [period]);
 
-  const employees = state.profiles.filter(p => p.status === "active" && p.role !== "admin");
+  const employees = state.profiles.filter(p => p.status === "active" && p.role !== "admin" && p.role !== "superadmin");
 
   const getStatus = (pid: string, date: string): Attendance["status"] =>
     state.attendance.find(a => a.profileId === pid && a.workDate === date)?.status || "work";
@@ -85,3 +85,4 @@ export default function AttendancePage() {
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-import type { Order, OrderItem, Receipt, ReceiptStatus, PaymentStatus, Profile } from "@/types";
+﻿import type { Order, OrderItem, Receipt, ReceiptStatus, PaymentStatus, Profile } from "@/types";
 import type { State } from "./store";
 import { calcOrder } from "./cost";
 import { recalcBranchForecast } from "./forecast";
@@ -64,7 +64,7 @@ export function updateOrderPaymentStatus(
     paymentMethod,
     receiptDate: order.orderDate,
     status: receiptStatus,
-    approvedBy: approved ? (actor.role === "admin" ? actor.id : "u_admin") : undefined,
+    approvedBy: approved ? ((actor.role === "admin" || actor.role === "superadmin") ? actor.id : "u_admin") : undefined,
     approvedAt: approved ? todayISO() : undefined,
   };
   const receipts = existingReceipt
@@ -137,7 +137,7 @@ export function createOrder(state: State, input: NewOrderInput, actor: Profile):
       paymentMethod: input.paymentStatus === "cash_done" ? "cash" : "chuyển khoản",
       receiptDate: input.orderDate,
       status: rStatus,
-      approvedBy: rStatus === "approved" ? (actor.role === "admin" ? actor.id : "u_admin") : undefined,
+      approvedBy: rStatus === "approved" ? ((actor.role === "admin" || actor.role === "superadmin") ? actor.id : "u_admin") : undefined,
       approvedAt: rStatus === "approved" ? todayISO() : undefined,
     };
     receipts = [receipt, ...receipts];
@@ -155,3 +155,4 @@ export function createOrder(state: State, input: NewOrderInput, actor: Profile):
 
   return { ...state, orders, receipts, branches, clInventory };
 }
+

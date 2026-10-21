@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import React, { createContext, useContext, useEffect, useState } from "react";
 import type {
   Profile, Customer, CustomerBranch, Product, Order, Receipt,
@@ -70,8 +70,8 @@ const initial: State = {
 
 // v7: Sổ Xưởng (ProductionDay đổi cấu trúc) + MCK + kho recover + cấu hình xưởng.
 // Dữ liệu localStorage cũ không tương thích nên đổi key để nạp lại mặc định.
-// v8: dọn sạch mock data (chỉ còn danh mục + 2 tài khoản) → bỏ dữ liệu localStorage cũ.
-const STORAGE_KEY = "nnnt_state_v8";
+// v9: dọn sạch mock data (chỉ còn danh mục sản phẩm + tài khoản; NVL để trống) → bỏ dữ liệu localStorage cũ.
+const STORAGE_KEY = "nnnt_state_v9";
 const StoreCtx = createContext<Ctx | null>(null);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
@@ -109,3 +109,4 @@ export function useStore() {
   if (!ctx) throw new Error("useStore must be used within StoreProvider");
   return ctx;
 }
+

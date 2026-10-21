@@ -1,4 +1,4 @@
-import type { Role } from "@/types";
+﻿import type { Role } from "@/types";
 
 export type Action =
   | "view_dashboard"
@@ -32,19 +32,22 @@ export type Action =
   | "manage_settings"
   | "manage_users";
 
+const ADMIN_ACTIONS: Action[] = [
+  "view_dashboard",
+  "view_customers", "manage_customers",
+  "view_orders", "manage_orders",
+  "view_receipts", "create_receipt", "approve_receipt",
+  "view_debts", "view_expenses", "manage_expenses", "view_leads", "manage_leads",
+  "view_production", "manage_production", "manage_materials", "view_materials",
+  "create_transfer", "confirm_transfer", "confirm_transfer_factory", "manage_recovery",
+  "view_warehouse_hn",
+  "view_payroll", "manage_payroll", "approve_payroll", "view_payroll_self",
+  "view_reports", "view_financials", "manage_settings", "manage_users",
+];
+
 const matrix: Record<Role, Action[]> = {
-  admin: [
-    "view_dashboard",
-    "view_customers", "manage_customers",
-    "view_orders", "manage_orders",
-    "view_receipts", "create_receipt", "approve_receipt",
-    "view_debts", "view_expenses", "manage_expenses", "view_leads", "manage_leads",
-    "view_production", "manage_production", "manage_materials", "view_materials",
-    "create_transfer", "confirm_transfer", "confirm_transfer_factory", "manage_recovery",
-    "view_warehouse_hn",
-    "view_payroll", "manage_payroll", "approve_payroll", "view_payroll_self",
-    "view_reports", "view_financials", "manage_settings", "manage_users",
-  ],
+  superadmin: ADMIN_ACTIONS, // toàn quyền như admin (tài khoản vận hành hệ thống)
+  admin: ADMIN_ACTIONS,
   manager: [
     "view_dashboard",
     "view_customers", "manage_customers",
@@ -99,3 +102,4 @@ export function can(role: Role | undefined, action: Action) {
   if (!role) return false;
   return matrix[role]?.includes(action) ?? false;
 }
+
