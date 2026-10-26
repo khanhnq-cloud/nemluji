@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useMemo, useState } from "react";
 import { Pencil } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
@@ -17,31 +17,42 @@ export default function WarehouseHnPage() {
   const { user } = useAuth();
   const canAdjust = can(user?.role, "adjust_inventory"); // chỉ admin
 
-  const [editId, setEditId] = useState<string | null>(null);
-  const [fac, setFac] = useState("");
-  const [cl, setCl] = useState("");
-  const editing = state.products.find(p => p.id === editId);
+  // Chỉnh tồn: 1 hộp thoại sửa tất cả sản phẩm (Xưởng + Cát Linh). Chỉ admin.
+  const [editOpen, setEditOpen] = useState(false);
+  const [draft, setDraft] = useState<Record<string, { fac: string; cl: string }>>({});
 
-  const openEdit = (productId: string) => {
-    setFac(String(invQty(state.factoryInventory, productId)));
-    setCl(String(invQty(state.clInventory, productId)));
-    setEditId(productId);
+  const openEdit = () => {
+    const d: Record<string, { fac: string; cl: string }> = {};
+    for (const p of state.products) {
+      d[p.id] = { fac: String(invQty(state.factoryInventory, p.id)), cl: String(invQty(state.clInventory, p.id)) };
+    }
+    setDraft(d);
+    setEditOpen(true);
   };
 
-  const facNum = Number(fac);
-  const clNum = Number(cl);
-  const valid = fac.trim() !== "" && cl.trim() !== "" && Number.isFinite(facNum) && Number.isFinite(clNum) && facNum >= 0 && clNum >= 0;
+  const parse = (v: string) => (v.trim() === "" ? NaN : Number(v));
+  const valid = state.products.every(p => {
+    const d = draft[p.id];
+    if (!d) return false;
+    const f = parse(d.fac), c = parse(d.cl);
+    return Number.isFinite(f) && Number.isFinite(c) && f >= 0 && c >= 0;
+  });
 
   const saveEdit = () => {
-    if (!editId || !valid || !canAdjust) return;
-    update(s => ({
-      ...s,
-      factoryInventory: adjustInventory(s.factoryInventory, editId, facNum - invQty(s.factoryInventory, editId)),
-      clInventory: adjustInventory(s.clInventory, editId, clNum - invQty(s.clInventory, editId)),
-    }));
-    setEditId(null);
+    if (!canAdjust || !valid) return;
+    update(s => {
+      let factoryInventory = s.factoryInventory;
+      let clInventory = s.clInventory;
+      for (const p of s.products) {
+        const d = draft[p.id];
+        if (!d) continue;
+        factoryInventory = adjustInventory(factoryInventory, p.id, parse(d.fac) - invQty(factoryInventory, p.id));
+        clInventory = adjustInventory(clInventory, p.id, parse(d.cl) - invQty(clInventory, p.id));
+      }
+      return { ...s, factoryInventory, clInventory };
+    });
+    setEditOpen(false);
   };
-
   const clValue = useMemo(
     () => state.clInventory.reduce((s, ci) => {
       const p = state.products.find(x => x.id === ci.productId);
@@ -54,7 +65,9 @@ export default function WarehouseHnPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Kho thành phẩm — Xưởng ↔ Cát Linh" subtitle="Tồn 2 kho liên kết: Sản xuất → Xưởng → (chuyển kho) → Cát Linh → (bán hàng) trừ Cát Linh" />
+      <PageHeader title="Kho thành phẩm — Xưởng ↔ Cát Linh" subtitle="Tồn 2 kho liên kết: Sản xuất → Xưởng → (chuyển kho) → Cát Linh → (bán hàng) trừ Cát Linh"
+        actions={canAdjust && <button className="btn-primary" onClick={openEdit}><Pencil className="h-4 w-4" /> Chỉnh tồn kho</button>}
+      />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard label="Tồn kho Xưởng (kg)" value={formatKg(totalQty(state.factoryInventory))} />
@@ -89,7 +102,7 @@ export default function WarehouseHnPage() {
                   <td className="text-right">{formatMoney(cl * p.fixCost)}</td>
                   {canAdjust && (
                     <td className="text-right">
-                      <button className="btn-ghost btn-sm" onClick={() => openEdit(p.id)} title="Chỉnh tồn kho">
+                      <button className="btn-ghost btn-sm" onClick={openEdit} title="Chỉnh tồn kho">
                         <Pencil className="h-3.5 w-3.5" /> Chỉnh tồn
                       </button>
                     </td>
@@ -121,27 +134,32 @@ export default function WarehouseHnPage() {
       </div>
 
       <Modal
-        open={canAdjust && !!editing}
-        onClose={() => setEditId(null)}
-        title={`Chỉnh tồn kho — ${editing?.name ?? ""}`}
-        size="sm"
+        open={canAdjust && editOpen}
+        onClose={() => setEditOpen(false)}
+        title="Chỉnh tồn kho thành phẩm"
+        size="md"
         footer={<>
-          <button className="btn-secondary" onClick={() => setEditId(null)}>Huỷ</button>
-          <button className="btn-primary" disabled={!valid} onClick={saveEdit}>Lưu</button>
+          <button className="btn-secondary" onClick={() => setEditOpen(false)}>Huỷ</button>
+          <button className="btn-primary" disabled={!valid} onClick={saveEdit}>Lưu thay đổi</button>
         </>}
       >
-        <div className="space-y-3">
-          <div className="text-xs text-gray-500">Nhập số tồn thực tế (kg). Giá trị mới sẽ thay thế số tồn hiện tại.</div>
-          <div>
-            <label className="label">Tồn Xưởng (kg)</label>
-            <input className="input" type="number" min={0} step="0.01" value={fac} onChange={e => setFac(e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Tồn Cát Linh (kg)</label>
-            <input className="input" type="number" min={0} step="0.01" value={cl} onChange={e => setCl(e.target.value)} />
-          </div>
-        </div>
+        <div className="text-xs text-gray-500 mb-3">Nhập số tồn thực tế (kg) cho từng sản phẩm. Giá trị mới sẽ thay thế số tồn hiện tại.</div>
+        <table className="table-base">
+          <thead><tr><th>Sản phẩm</th><th className="text-right">Tồn Xưởng (kg)</th><th className="text-right">Tồn Cát Linh (kg)</th></tr></thead>
+          <tbody>
+            {state.products.map(p => (
+              <tr key={p.id}>
+                <td className="font-medium">{p.name}</td>
+                <td><input className="input text-right" type="number" min={0} step="0.01" value={draft[p.id]?.fac ?? ""}
+                  onChange={e => setDraft(d => ({ ...d, [p.id]: { ...(d[p.id] ?? { fac: "", cl: "" }), fac: e.target.value } }))} /></td>
+                <td><input className="input text-right" type="number" min={0} step="0.01" value={draft[p.id]?.cl ?? ""}
+                  onChange={e => setDraft(d => ({ ...d, [p.id]: { ...(d[p.id] ?? { fac: "", cl: "" }), cl: e.target.value } }))} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </Modal>
     </div>
   );
 }
+
