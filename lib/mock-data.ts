@@ -10,6 +10,7 @@
 export const PROFILES: Profile[] = [
   { id: "u_super", fullName: "Super Admin",  email: "superadmin@nemluji.vn", role: "superadmin", baseSalary: 0, commissionPct: 0, status: "active" },
   { id: "u_admin", fullName: "Quản trị viên", email: "admin@nemluji.vn",    role: "admin", baseSalary: 0, commissionPct: 0, status: "active" },
+  { id: "u_admin2", fullName: "Quản trị viên 2", email: "admin2@nemluji.vn", role: "admin", baseSalary: 0, commissionPct: 0, status: "active" },
   { id: "u_sale",  fullName: "Nhân viên",     email: "nhanvien@nemluji.vn", role: "sale",  baseSalary: 0, commissionPct: 5, debtCommissionPct: 3, status: "active" },
 ];
 

@@ -30,7 +30,8 @@ export type Action =
   | "view_reports"
   | "view_financials" // Net Revenue / Net Profit / Cost — CHỈ admin
   | "manage_settings"
-  | "manage_users";
+  | "manage_users"
+  | "adjust_inventory"; // chỉnh tay tồn kho thành phẩm (Xưởng / Cát Linh) — CHỈ admin
 
 const ADMIN_ACTIONS: Action[] = [
   "view_dashboard",
@@ -43,6 +44,7 @@ const ADMIN_ACTIONS: Action[] = [
   "view_warehouse_hn",
   "view_payroll", "manage_payroll", "approve_payroll", "view_payroll_self",
   "view_reports", "view_financials", "manage_settings", "manage_users",
+  "adjust_inventory",
 ];
 
 const matrix: Record<Role, Action[]> = {
@@ -102,4 +104,5 @@ export function can(role: Role | undefined, action: Action) {
   if (!role) return false;
   return matrix[role]?.includes(action) ?? false;
 }
+
 

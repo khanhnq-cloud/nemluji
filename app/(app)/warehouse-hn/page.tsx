@@ -1,15 +1,46 @@
 "use client";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { Pencil } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import StatCard from "@/components/StatCard";
 import EmptyState from "@/components/EmptyState";
+import Modal from "@/components/Modal";
 import { TransferBadge } from "@/components/Badge";
 import { useStore } from "@/lib/store";
-import { invQty, totalQty } from "@/lib/inventory";
+import { useAuth } from "@/lib/auth";
+import { can } from "@/lib/permissions";
+import { adjustInventory, invQty, totalQty } from "@/lib/inventory";
 import { formatDate, formatKg, formatMoney } from "@/lib/utils";
 
 export default function WarehouseHnPage() {
-  const { state } = useStore();
+  const { state, update } = useStore();
+  const { user } = useAuth();
+  const canAdjust = can(user?.role, "adjust_inventory"); // chỉ admin
+
+  const [editId, setEditId] = useState<string | null>(null);
+  const [fac, setFac] = useState("");
+  const [cl, setCl] = useState("");
+  const editing = state.products.find(p => p.id === editId);
+
+  const openEdit = (productId: string) => {
+    setFac(String(invQty(state.factoryInventory, productId)));
+    setCl(String(invQty(state.clInventory, productId)));
+    setEditId(productId);
+  };
+
+  const facNum = Number(fac);
+  const clNum = Number(cl);
+  const valid = fac.trim() !== "" && cl.trim() !== "" && Number.isFinite(facNum) && Number.isFinite(clNum) && facNum >= 0 && clNum >= 0;
+
+  const saveEdit = () => {
+    if (!editId || !valid || !canAdjust) return;
+    update(s => ({
+      ...s,
+      factoryInventory: adjustInventory(s.factoryInventory, editId, facNum - invQty(s.factoryInventory, editId)),
+      clInventory: adjustInventory(s.clInventory, editId, clNum - invQty(s.clInventory, editId)),
+    }));
+    setEditId(null);
+  };
 
   const clValue = useMemo(
     () => state.clInventory.reduce((s, ci) => {
@@ -41,6 +72,7 @@ export default function WarehouseHnPage() {
             <th className="text-right">Tồn Cát Linh</th>
             <th className="text-right">Tổng tồn</th>
             <th className="text-right">Giá vốn/kg</th><th className="text-right">Giá trị tồn Cát Linh</th>
+            {canAdjust && <th />}
           </tr></thead>
           <tbody>
             {state.products.map(p => {
@@ -55,6 +87,13 @@ export default function WarehouseHnPage() {
                   <td className="text-right font-medium">{formatKg(fac + cl)}</td>
                   <td className="text-right">{formatMoney(p.fixCost)}</td>
                   <td className="text-right">{formatMoney(cl * p.fixCost)}</td>
+                  {canAdjust && (
+                    <td className="text-right">
+                      <button className="btn-ghost btn-sm" onClick={() => openEdit(p.id)} title="Chỉnh tồn kho">
+                        <Pencil className="h-3.5 w-3.5" /> Chỉnh tồn
+                      </button>
+                    </td>
+                  )}
                 </tr>
               );
             })}
@@ -80,6 +119,29 @@ export default function WarehouseHnPage() {
         </table>
         {state.transfers.length === 0 && <EmptyState />}
       </div>
+
+      <Modal
+        open={canAdjust && !!editing}
+        onClose={() => setEditId(null)}
+        title={`Chỉnh tồn kho — ${editing?.name ?? ""}`}
+        size="sm"
+        footer={<>
+          <button className="btn-secondary" onClick={() => setEditId(null)}>Huỷ</button>
+          <button className="btn-primary" disabled={!valid} onClick={saveEdit}>Lưu</button>
+        </>}
+      >
+        <div className="space-y-3">
+          <div className="text-xs text-gray-500">Nhập số tồn thực tế (kg). Giá trị mới sẽ thay thế số tồn hiện tại.</div>
+          <div>
+            <label className="label">Tồn Xưởng (kg)</label>
+            <input className="input" type="number" min={0} step="0.01" value={fac} onChange={e => setFac(e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Tồn Cát Linh (kg)</label>
+            <input className="input" type="number" min={0} step="0.01" value={cl} onChange={e => setCl(e.target.value)} />
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
