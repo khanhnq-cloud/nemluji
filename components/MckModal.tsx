@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useMemo, useState } from "react";
 import Modal from "@/components/Modal";
 import EmptyState from "@/components/EmptyState";
@@ -18,6 +18,7 @@ export default function MckModal({ open, onClose }: { open: boolean; onClose: ()
   // Tiêu huỷ / Recover đều sinh phiếu chi → chỉ ai được tạo phiếu chi mới được xử lý 2 nhánh này.
   // Hút lại tại Cát Linh không phát sinh tiền nên không cần gate này.
   const canFinance = can(user?.role, "manage_expenses");
+  const showFin = can(user?.role, "view_financials"); // fix_cost — chỉ admin
 
   const sellableProducts = useMemo(() => state.products.filter(p => p.isActive), [state.products]);
   const [rf, setRf] = useState({ logDate: todayISO(), productId: "", qtyKg: 0, note: "" });
@@ -117,7 +118,7 @@ export default function MckModal({ open, onClose }: { open: boolean; onClose: ()
                 {action.type === "destroy" && (
                   <>
                     <div><label className="label">Lý do</label><input className="input" value={aReason} onChange={e => setAReason(e.target.value)} /></div>
-                    <div className="text-sm text-gray-600">Phiếu chi dự kiến: <b>{formatMoney((prod?.fixCost || 0) * (aQty || 0))}</b></div>
+                    {showFin && <div className="text-sm text-gray-600">Phiếu chi dự kiến: <b>{formatMoney((prod?.fixCost || 0) * (aQty || 0))}</b></div>}
                   </>
                 )}
                 {action.type === "recover" && (

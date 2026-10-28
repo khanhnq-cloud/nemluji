@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useMemo, useState } from "react";
 import PageHeader from "@/components/PageHeader";
 import Modal from "@/components/Modal";
@@ -609,7 +609,7 @@ export default function OrdersPage() {
             </div>
             <div className="overflow-x-auto border border-gray-200 rounded-md">
               <table className="table-base">
-                <thead><tr><th>Sản phẩm</th><th className="text-right">Tồn Cát Linh</th><th className="w-28">SL</th><th className="w-36">Đơn giá</th><th className="w-16 text-center">Tặng</th><th className="text-right w-28">Doanh thu</th><th className="text-right w-28">Cost</th><th></th></tr></thead>
+                <thead><tr><th>Sản phẩm</th><th className="text-right">Tồn Cát Linh</th><th className="w-28">SL</th><th className="w-36">Đơn giá</th><th className="w-16 text-center">Tặng</th><th className="text-right w-28">Doanh thu</th>{showFin && <th className="text-right w-28">Cost</th>}<th></th></tr></thead>
                 <tbody>
                   {form.items.map(it => (
                     <tr key={it.id} className={it.isGift ? "bg-purple-50/40" : ""}>
@@ -629,14 +629,14 @@ export default function OrdersPage() {
                         </button>
                       </td>
                       <td className="text-right">{formatMoney(it.lineRevenue)}</td>
-                      <td className="text-right text-gray-500">{formatMoney(it.lineCost)}</td>
+                      {showFin && <td className="text-right text-gray-500">{formatMoney(it.lineCost)}</td>}
                       <td><button className="btn-ghost btn-sm text-red-600" onClick={() => removeItem(it.id)}><Trash2 className="h-3.5 w-3.5" /></button></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <div className="text-xs text-gray-500 mt-1">Hàng tặng: doanh thu = 0, vẫn cộng cost theo giá vốn (fix_cost).</div>
+            {showFin && <div className="text-xs text-gray-500 mt-1">Hàng tặng: doanh thu = 0, vẫn cộng cost theo giá vốn (fix_cost).</div>}
           </div>
 
           {/* Section: Chiết khấu + phí ship + thanh toán */}

@@ -16,6 +16,7 @@ export default function WarehouseHnPage() {
   const { state, update } = useStore();
   const { user } = useAuth();
   const canAdjust = can(user?.role, "adjust_inventory"); // chỉ admin
+  const showFin = can(user?.role, "view_financials"); // giá vốn / giá trị tồn — chỉ admin
 
   // Chỉnh tồn: 1 hộp thoại sửa tất cả sản phẩm (Xưởng + Cát Linh). Chỉ admin.
   const [editOpen, setEditOpen] = useState(false);
@@ -72,7 +73,7 @@ export default function WarehouseHnPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard label="Tồn kho Xưởng (kg)" value={formatKg(totalQty(state.factoryInventory))} />
         <StatCard label="Tồn kho Cát Linh (kg)" value={formatKg(totalQty(state.clInventory))} />
-        <StatCard label="Giá trị tồn Cát Linh" value={formatMoney(clValue)} />
+        {showFin && <StatCard label="Giá trị tồn Cát Linh" value={formatMoney(clValue)} />}
         <StatCard label="Phiếu chuyển chờ nhận" value={pendingTransfers.length} tone={pendingTransfers.length ? "warn" : "default"} />
       </div>
 
@@ -84,7 +85,7 @@ export default function WarehouseHnPage() {
             <th className="text-right">Tồn Xưởng</th>
             <th className="text-right">Tồn Cát Linh</th>
             <th className="text-right">Tổng tồn</th>
-            <th className="text-right">Giá vốn/kg</th><th className="text-right">Giá trị tồn Cát Linh</th>
+            {showFin && <><th className="text-right">Giá vốn/kg</th><th className="text-right">Giá trị tồn Cát Linh</th></>}
             {canAdjust && <th />}
           </tr></thead>
           <tbody>
@@ -98,8 +99,10 @@ export default function WarehouseHnPage() {
                   <td className="text-right">{formatKg(fac)}</td>
                   <td className={`text-right ${cl < 5 ? "text-red-600 font-medium" : ""}`}>{formatKg(cl)}</td>
                   <td className="text-right font-medium">{formatKg(fac + cl)}</td>
-                  <td className="text-right">{formatMoney(p.fixCost)}</td>
-                  <td className="text-right">{formatMoney(cl * p.fixCost)}</td>
+                  {showFin && <>
+                    <td className="text-right">{formatMoney(p.fixCost)}</td>
+                    <td className="text-right">{formatMoney(cl * p.fixCost)}</td>
+                  </>}
                   {canAdjust && (
                     <td className="text-right">
                       <button className="btn-ghost btn-sm" onClick={openEdit} title="Chỉnh tồn kho">

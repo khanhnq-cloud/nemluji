@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useMemo, useState } from "react";
 import PageHeader from "@/components/PageHeader";
 import EmptyState from "@/components/EmptyState";
@@ -15,6 +15,7 @@ export default function RecoveryPage() {
   const { state, update } = useStore();
   const { user } = useAuth();
   const canManage = can(user?.role, "manage_recovery");
+  const showFin = can(user?.role, "view_financials"); // fix_cost — chỉ admin
   const [tab, setTab] = useState<"recover" | "destroy">("recover");
 
   const [df, setDf] = useState({ logDate: todayISO(), productId: state.products[0]?.id || "", warehouse: "factory" as "factory" | "cl", qtyKg: 0, reason: "" });
@@ -213,12 +214,12 @@ export default function RecoveryPage() {
             <div><label className="label">Lý do</label><input className="input" value={df.reason} onChange={e => setDf(f => ({ ...f, reason: e.target.value }))} /></div>
             <button className="btn-danger" onClick={addDestruction}><Plus className="h-4 w-4" /> Tiêu huỷ</button>
           </div>}
-          {canManage && <div className="text-xs text-gray-500 -mt-1">
+          {canManage && showFin && <div className="text-xs text-gray-500 -mt-1">
             Phiếu chi dự kiến: {formatMoney((state.products.find(p => p.id === df.productId)?.fixCost || 0) * (df.qtyKg || 0))} (fix_cost {formatMoney(state.products.find(p => p.id === df.productId)?.fixCost || 0)} × {df.qtyKg || 0} kg)
           </div>}
           <div className="card overflow-x-auto">
             <table className="table-base">
-              <thead><tr><th>Ngày</th><th>Kho</th><th>Sản phẩm</th><th className="text-right">SL (kg)</th><th className="text-right">Fix cost</th><th className="text-right">Phiếu chi</th><th>Lý do</th></tr></thead>
+              <thead><tr><th>Ngày</th><th>Kho</th><th>Sản phẩm</th><th className="text-right">SL (kg)</th>{showFin && <th className="text-right">Fix cost</th>}<th className="text-right">Phiếu chi</th><th>Lý do</th></tr></thead>
               <tbody>
                 {state.destructionLogs.map(l => {
                   const exp = state.expenses.find(e => e.id === l.expenseId);
@@ -228,7 +229,7 @@ export default function RecoveryPage() {
                       <td>{l.warehouse === "factory" ? "Xưởng" : "Kho Cát Linh"}</td>
                       <td>{prodName(l.productId)}</td>
                       <td className="text-right text-red-600">−{formatKg(l.qtyKg)}</td>
-                      <td className="text-right">{formatMoney(l.unitCost)}</td>
+                      {showFin && <td className="text-right">{formatMoney(l.unitCost)}</td>}
                       <td className="text-right font-medium text-red-600">{formatMoney(l.totalLoss)}<div className="text-xs text-gray-400">{exp?.code}</div></td>
                       <td>{l.reason}</td>
                     </tr>
