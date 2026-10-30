@@ -10,7 +10,8 @@ import { useAuth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { calcOrder, calcOrderItem } from "@/lib/cost";
 import { createOrder, updateOrderPaymentStatus, updateOrderShipFee } from "@/lib/order-actions";
-import { invQty, totalQty } from "@/lib/inventory";
+import { adjustInventory, invQty, totalQty } from "@/lib/inventory";
+import { recalcBranchForecast } from "@/lib/forecast";
 import {
   formatDate, formatTime, formatDateTime, formatKg, formatMoney, formatNumber, newId, nextSequentialCode, todayISO,
   PAYMENT_STATUS_LABEL, CUSTOMER_GROUP_LABEL, COMPANY_ASSIGNEE,
@@ -307,11 +308,26 @@ export default function OrdersPage() {
   const cancelOrder = (id: string) => {
     const reason = prompt("Lý do huỷ đơn:");
     if (!reason) return;
-    update(s => ({
-      ...s,
-      orders: s.orders.map(o => o.id === id ? { ...o, status: "cancelled", cancelReason: reason } : o),
-      receipts: s.receipts.map(r => r.orderId === id && r.status !== "approved" ? { ...r, status: "cancelled" } : r),
-    }));
+    update(s => {
+      const order = s.orders.find(o => o.id === id);
+      if (!order || order.status === "cancelled") return s;
+      const orders = s.orders.map(o => o.id === id ? { ...o, status: "cancelled" as const, cancelReason: reason } : o);
+      // Trả hàng về kho Cát Linh (lúc tạo đơn đã trừ cả hàng tặng)
+      let clInventory = s.clInventory;
+      for (const it of order.items) clInventory = adjustInventory(clInventory, it.productId, it.quantity);
+      // Dự báo chi nhánh tính lại không có đơn đã huỷ
+      const forecast = recalcBranchForecast(order.branchId, orders);
+      const branches = s.branches.map(b => b.id === order.branchId
+        ? { ...b, lastOrderDate: undefined, avgOrderGapDays: undefined, estNextOrderDate: undefined, ...forecast }
+        : b);
+      return {
+        ...s,
+        orders,
+        clInventory,
+        branches,
+        receipts: s.receipts.map(r => r.orderId === id && r.status !== "approved" ? { ...r, status: "cancelled" } : r),
+      };
+    });
   };
 
   // Xuất Excel (CSV UTF-8 BOM, mở được bằng Excel) — đủ cột gồm net/cost/profit
