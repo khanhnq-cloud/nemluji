@@ -8,7 +8,7 @@ import { StatusBadge } from "@/components/Badge";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { computeUsages, computeBatchResult, batchesRemaining } from "@/lib/production";
+import { computeUsages, computeBatchResult, batchesRemaining, effectiveMaterialCostPerBatch2 } from "@/lib/production";
 import { adjustInventory, invQty, totalQty } from "@/lib/inventory";
 import { formatDate, formatMoney, formatKg, formatNumber, formatPct, nextSequentialCode, newId, todayISO } from "@/lib/utils";
 import { Plus, Eye, Lock, AlertTriangle } from "lucide-react";
@@ -22,7 +22,12 @@ export default function ProductionDaysPage() {
   const [open, setOpen] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
 
-  const { standardOutputPerBatch2, materialCostPerBatch2 } = state.settings;
+  const { standardOutputPerBatch2 } = state.settings;
+  // Nhập tay ở Cài đặt, hoặc tự tính từ định mức × đơn giá NVL
+  const materialCostPerBatch2 = useMemo(
+    () => effectiveMaterialCostPerBatch2(state.settings, state.recipes, state.materials),
+    [state.settings, state.recipes, state.materials],
+  );
 
   // NVL đang bật, sắp theo thứ tự cột sổ
   const activeMaterials = useMemo(

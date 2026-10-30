@@ -73,9 +73,12 @@ supabase-schema.sql     Schema PostgreSQL đầy đủ (mục 10 guideline)
 ```
 
 ## Kết nối Supabase thật
-1. Chạy `supabase-schema.sql` trong Supabase SQL Editor.
+1. Trong Supabase SQL Editor chạy lần lượt: `supabase-schema.sql` → `supabase-auth.sql` → `supabase-app-records.sql`.
 2. Copy `.env.example` → `.env.local`, điền `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
-3. Restart. (Giai đoạn 2: thay `useStore()` bằng Supabase queries + RLS theo role.)
+3. Restart.
 
-## Reset dữ liệu demo
-Nút **Reset demo** ở header → xoá localStorage và nạp lại seed.
+Khi có Supabase, **toàn bộ dữ liệu nghiệp vụ dùng chung** cho mọi tài khoản qua bảng `app_records`
+(mỗi bản ghi của `useStore()` là 1 dòng `(collection, id) → data`), đồng bộ realtime giữa các máy.
+Lần đăng nhập đầu tiên tạo dữ liệu mặc định (danh mục sản phẩm, tồn kho = 0, cấu hình).
+Dữ liệu từng nhập trên một máy (localStorage cũ) được tự đẩy lên máy chủ 1 lần khi máy đó đăng nhập.
+Không cấu hình Supabase → app chạy chế độ demo 1 máy bằng localStorage.

@@ -72,6 +72,26 @@ export function avgBatchesPerDay(days: ProductionDay[]): number {
   return total / closed.length;
 }
 
+// Chi phí NVL theo định mức hiện tại: mỗi mẻ 2 đi kèm 1 mẻ 1 (sổ: ~1.67tr / mẻ 2)
+export function recipeCostPerBatch(recipes: ProductionRecipe[], materials: Material[]) {
+  let batch1 = 0, batch2 = 0;
+  for (const r of recipes) {
+    const price = materials.find(m => m.id === r.materialId && m.isActive)?.unitPrice ?? 0;
+    batch1 += r.batch1Rate * price;
+    batch2 += r.batch2Rate * price;
+  }
+  return { batch1: Math.round(batch1), batch2: Math.round(batch2), total: Math.round(batch1 + batch2) };
+}
+
+// Chi phí NVL / mẻ 2 dùng để tính giá thành: nhập tay, hoặc tự tính từ định mức
+export function effectiveMaterialCostPerBatch2(
+  settings: { materialCostAuto?: boolean; materialCostPerBatch2: number },
+  recipes: ProductionRecipe[],
+  materials: Material[],
+): number {
+  return settings.materialCostAuto ? recipeCostPerBatch(recipes, materials).total : settings.materialCostPerBatch2;
+}
+
 // Vốn NVL tồn xưởng = Σ tồn × đơn giá
 export function materialStockValue(materials: Material[]): number {
   return materials.reduce((s, m) => s + m.qty * m.unitPrice, 0);

@@ -2,19 +2,25 @@
 import { useState } from "react";
 import PageHeader from "@/components/PageHeader";
 import Modal from "@/components/Modal";
+import EmptyState from "@/components/EmptyState";
 import { useStore } from "@/lib/store";
+import { useAuth } from "@/lib/auth";
+import { can } from "@/lib/permissions";
+import { recipeCostPerBatch } from "@/lib/production";
 import { formatMoney, newId } from "@/lib/utils";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import type { Product, Material, ProductionRecipe } from "@/types";
 
 type ProdForm = { id?: string; sku: string; name: string; unit: string; defaultPrice: number; fixCost: number; isFactoryOutput: boolean };
-type MatForm = { name: string; unit: string; unitPrice: number; warningDays: number; batch1Rate: number; batch2Rate: number };
+type MatForm = { id?: string; name: string; unit: string; unitPrice: number; warningDays: number; sortOrder?: number; batch1Rate: number; batch2Rate: number };
 
 const blankProd = (): ProdForm => ({ sku: "", name: "", unit: "kg", defaultPrice: 0, fixCost: 0, isFactoryOutput: true });
 const blankMat = (): MatForm => ({ name: "", unit: "kg", unitPrice: 0, warningDays: 3, batch1Rate: 0, batch2Rate: 0 });
 
 export default function SettingsPage() {
   const { state, update } = useStore();
+  const { user } = useAuth();
+  const canManage = can(user?.role, "manage_settings");
   const [tab, setTab] = useState<"products" | "recipe" | "config">("products");
   const [prodForm, setProdForm] = useState<ProdForm | null>(null);
   const [matForm, setMatForm] = useState<MatForm | null>(null);
@@ -61,24 +67,58 @@ export default function SettingsPage() {
     update(s => ({ ...s, products: s.products.map(p => p.id === id ? { ...p, isActive: !current } : p) }));
 
   // --- Materials / Recipe ---
+  // Sửa định mức: NVL chưa có dòng định mức thì tạo mới (trước đây sửa không có tác dụng)
   const setRecipe = (materialId: string, field: "batch1Rate" | "batch2Rate", value: number) =>
-    update(s => ({ ...s, recipes: s.recipes.map(r => r.materialId === materialId ? { ...r, [field]: value } : r) }));
+    update(s => ({
+      ...s,
+      recipes: s.recipes.some(r => r.materialId === materialId)
+        ? s.recipes.map(r => r.materialId === materialId ? { ...r, [field]: value } : r)
+        : [...s.recipes, { materialId, batch1Rate: 0, batch2Rate: 0, [field]: value }],
+    }));
 
   const setMatPrice = (id: string, value: number) =>
     update(s => ({ ...s, materials: s.materials.map(m => m.id === id ? { ...m, unitPrice: value } : m) }));
 
+  const editMat = (m: Material) => {
+    const r = state.recipes.find(x => x.materialId === m.id);
+    setMatForm({
+      id: m.id, name: m.name, unit: m.unit, unitPrice: m.unitPrice, warningDays: m.warningDays,
+      sortOrder: m.sortOrder, batch1Rate: r?.batch1Rate ?? 0, batch2Rate: r?.batch2Rate ?? 0,
+    });
+  };
+
   const saveMat = () => {
     if (!matForm) return;
     if (!matForm.name.trim()) { alert("Nhập tên NVL"); return; }
-    const id = newId();
-    const mat: Material = {
-      id, name: matForm.name.trim(), unit: matForm.unit || "kg",
-      unitPrice: matForm.unitPrice, warningDays: matForm.warningDays, qty: 0, isActive: true,
+    const dup = state.materials.some(m => m.id !== matForm.id && m.name.trim().toLowerCase() === matForm.name.trim().toLowerCase());
+    if (dup) { alert("Đã có NVL trùng tên"); return; }
+    const fields = {
+      name: matForm.name.trim(), unit: matForm.unit || "kg", unitPrice: matForm.unitPrice,
+      warningDays: matForm.warningDays, sortOrder: matForm.sortOrder,
     };
-    const rec: ProductionRecipe = { materialId: id, batch1Rate: matForm.batch1Rate, batch2Rate: matForm.batch2Rate };
-    update(s => ({ ...s, materials: [...s.materials, mat], recipes: [...s.recipes, rec] }));
+    if (matForm.id) {
+      const id = matForm.id;
+      update(s => ({
+        ...s,
+        materials: s.materials.map(m => m.id === id ? { ...m, ...fields } : m),
+        recipes: s.recipes.some(r => r.materialId === id)
+          ? s.recipes.map(r => r.materialId === id ? { ...r, batch1Rate: matForm.batch1Rate, batch2Rate: matForm.batch2Rate } : r)
+          : [...s.recipes, { materialId: id, batch1Rate: matForm.batch1Rate, batch2Rate: matForm.batch2Rate }],
+      }));
+    } else {
+      const id = newId();
+      const mat: Material = {
+        id, ...fields, qty: 0, isActive: true,
+        sortOrder: matForm.sortOrder ?? (Math.max(0, ...state.materials.map(m => m.sortOrder ?? 0)) + 1),
+      };
+      const rec: ProductionRecipe = { materialId: id, batch1Rate: matForm.batch1Rate, batch2Rate: matForm.batch2Rate };
+      update(s => ({ ...s, materials: [...s.materials, mat], recipes: [...s.recipes, rec] }));
+    }
     setMatForm(null);
   };
+
+  const recipeCost = recipeCostPerBatch(state.recipes, state.materials);
+  const sortedMaterials = [...state.materials].sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999));
 
   const deleteMat = (matId: string) => {
     const usedInProd = state.productionDays.some(d => d.usages.some(u => u.materialId === matId));
@@ -96,6 +136,10 @@ export default function SettingsPage() {
 
   const setSetting = (patch: Partial<typeof state.settings>) =>
     update(s => ({ ...s, settings: { ...s.settings, ...patch } }));
+
+  if (!canManage) {
+    return <div className="card p-6"><EmptyState title="Chỉ Admin được vào Cài đặt" /></div>;
+  }
 
   return (
     <div className="space-y-4">
@@ -182,17 +226,17 @@ export default function SettingsPage() {
               <Plus className="h-3.5 w-3.5" /> Thêm NVL
             </button>
           </div>
-          <div className="px-3 py-2 border-b text-xs text-gray-500">Định mức tiêu thụ NVL cho mỗi mẻ (kg/mẻ). Trừ lùi tự động khi chốt ngày sản xuất.</div>
+          <div className="px-3 py-2 border-b text-xs text-gray-500">Định mức tiêu thụ NVL cho mỗi mẻ (đơn vị NVL / mẻ). Trừ lùi tự động khi chốt ngày sản xuất. Sửa trực tiếp trong bảng, hoặc bấm bút chì để sửa tên / đơn vị / cảnh báo / thứ tự cột.</div>
           <table className="table-base">
             <thead>
               <tr>
                 <th>Nguyên liệu</th><th>Đơn vị</th>
                 <th className="w-32">ĐM mẻ 1</th><th className="w-32">ĐM mẻ 2</th>
-                <th className="w-36">Giá/đv</th><th className="w-12"></th>
+                <th className="w-36">Giá/đv</th><th className="w-20"></th>
               </tr>
             </thead>
             <tbody>
-              {state.materials.map(m => {
+              {sortedMaterials.map(m => {
                 const r = state.recipes.find(x => x.materialId === m.id);
                 return (
                   <tr key={m.id}>
@@ -211,18 +255,37 @@ export default function SettingsPage() {
                         onChange={e => setMatPrice(m.id, Number(e.target.value))} />
                     </td>
                     <td>
-                      <button
-                        className="p-1.5 rounded hover:bg-red-50 text-red-500"
-                        title="Xóa NVL & định mức"
-                        onClick={() => deleteMat(m.id)}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      <div className="flex gap-1 justify-end">
+                        <button
+                          className="p-1.5 rounded hover:bg-gray-100 text-gray-500"
+                          title="Sửa NVL & định mức"
+                          onClick={() => editMat(m)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          className="p-1.5 rounded hover:bg-red-50 text-red-500"
+                          title="Xóa NVL & định mức"
+                          onClick={() => deleteMat(m.id)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
+            {state.materials.length > 0 && (
+              <tfoot>
+                <tr className="bg-gray-50 font-medium">
+                  <td colSpan={2}>Chi phí NVL theo định mức</td>
+                  <td>{formatMoney(recipeCost.batch1)} / mẻ 1</td>
+                  <td>{formatMoney(recipeCost.batch2)} / mẻ 2</td>
+                  <td colSpan={2}>Tổng: {formatMoney(recipeCost.total)}</td>
+                </tr>
+              </tfoot>
+            )}
           </table>
+          {state.materials.length === 0 && <EmptyState title="Chưa có NVL" hint="Bấm “Thêm NVL” để khai báo nguyên liệu và định mức mỗi mẻ." />}
         </div>
       )}
 
@@ -241,7 +304,24 @@ export default function SettingsPage() {
           <div className="card p-4 max-w-2xl grid sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2 text-sm font-semibold text-gray-700">Cấu hình Xưởng — giá thành & dự báo</div>
             <Field label="Sản lượng chuẩn / mẻ 2 (kg)" value={state.settings.standardOutputPerBatch2} onChange={v => setSetting({ standardOutputPerBatch2: v })} />
-            <Field label="Chi phí NVL / mẻ 2 (đ)" value={state.settings.materialCostPerBatch2} onChange={v => setSetting({ materialCostPerBatch2: v })} />
+            {state.settings.materialCostAuto ? (
+              <div>
+                <label className="label">Chi phí NVL / mẻ 2 (đ) — tự tính</label>
+                <input className="input bg-gray-50" readOnly value={formatMoney(recipeCost.total)} />
+              </div>
+            ) : (
+              <Field label="Chi phí NVL / mẻ 2 (đ)" value={state.settings.materialCostPerBatch2} onChange={v => setSetting({ materialCostPerBatch2: v })} />
+            )}
+            <label className="sm:col-span-2 flex items-start gap-2 text-sm">
+              <input type="checkbox" className="mt-0.5" checked={!!state.settings.materialCostAuto}
+                onChange={e => setSetting({ materialCostAuto: e.target.checked })} />
+              <span>
+                Tự tính chi phí NVL / mẻ 2 từ định mức × đơn giá (mẻ 1 + mẻ 2)
+                <span className="block text-xs text-gray-500">
+                  Theo định mức hiện tại: {formatMoney(recipeCost.batch1)} (mẻ 1) + {formatMoney(recipeCost.batch2)} (mẻ 2) = <b>{formatMoney(recipeCost.total)}</b>
+                </span>
+              </span>
+            </label>
             <Field label="Số mẻ dự kiến / ngày (dự báo NVL)" value={state.settings.plannedBatchesPerDay} onChange={v => setSetting({ plannedBatchesPerDay: v })} />
             <Field label="Cảnh báo NVL (ngày)" value={state.settings.nvlWarningDays} onChange={v => setSetting({ nvlWarningDays: v })} />
             <p className="sm:col-span-2 text-xs text-gray-500">
@@ -315,7 +395,7 @@ export default function SettingsPage() {
       <Modal
         open={!!matForm}
         onClose={() => setMatForm(null)}
-        title="Thêm nguyên liệu & định mức"
+        title={matForm?.id ? "Sửa nguyên liệu & định mức" : "Thêm nguyên liệu & định mức"}
         size="md"
         footer={
           <>
@@ -346,6 +426,12 @@ export default function SettingsPage() {
               <input type="number" className="input" value={matForm.warningDays}
                 onChange={e => setMatForm(f => f ? { ...f, warningDays: Number(e.target.value) } : f)} />
             </div>
+            <div>
+              <label className="label">Thứ tự cột (Sổ Xưởng)</label>
+              <input type="number" className="input" value={matForm.sortOrder ?? ""} placeholder="Tự động"
+                onChange={e => setMatForm(f => f ? { ...f, sortOrder: e.target.value === "" ? undefined : Number(e.target.value) } : f)} />
+            </div>
+            <div />
             <div>
               <label className="label">ĐM mẻ 1 (kg/mẻ)</label>
               <input type="number" step="0.001" className="input" value={matForm.batch1Rate}

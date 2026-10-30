@@ -20,7 +20,14 @@ async function loadSupabaseProfile(uid: string, email: string): Promise<Profile 
   if (!supabase) return null;
   const { data, error } = await supabase.from("profiles").select("*").eq("id", uid).maybeSingle();
   if (error || !data || data.status !== "active") return null;
-  const mock = PROFILES.find(p => p.email.toLowerCase() === email.toLowerCase());
+  // Hồ sơ trong dữ liệu dùng chung (trang Người dùng) theo email → giữ đúng id mà
+  // đơn hàng / khách / lead tham chiếu; nếu chưa có thì dùng danh sách mặc định.
+  const { data: shared } = await supabase
+    .from("app_records").select("data")
+    .eq("collection", "profiles").ilike("data->>email", email)
+    .limit(1).maybeSingle();
+  const mock: Profile | undefined = (shared?.data as Profile | undefined)
+    ?? PROFILES.find(p => p.email.toLowerCase() === email.toLowerCase());
   return {
     ...(mock || {}),
     id: mock?.id ?? data.id,

@@ -467,4 +467,5 @@ export interface AppSettings {
   standardOutputPerBatch2: number; // sản lượng chuẩn / mẻ 2 (sổ: 33.5) → hao hụt/mẻ
   materialCostPerBatch2: number;   // chi phí NVL / mẻ 2 (sổ: 1.674.323) → giá thành/kg
   plannedBatchesPerDay: number;    // số mẻ dự kiến/ngày cho dự báo NVL còn dùng được
+  materialCostAuto?: boolean;      // true → chi phí NVL/mẻ 2 tự tính từ định mức × đơn giá (bỏ qua materialCostPerBatch2)
 }
