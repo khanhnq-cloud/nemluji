@@ -65,6 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Supabase Auth
     if (isSupabaseEnabled && supabase) {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error && /banned/i.test(error.message)) return { ok: false, error: "Tài khoản đã bị ngưng. Liên hệ Admin." };
       if (error || !data.user) return { ok: false, error: "Sai email hoặc mật khẩu" };
       const profile = await loadSupabaseProfile(data.user.id, data.user.email ?? email);
       if (!profile) {

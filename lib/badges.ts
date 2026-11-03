@@ -2,9 +2,11 @@ import type { State } from "./store";
 import { materialDaysLeft } from "./production";
 
 // Đếm số liệu cho badge sidebar: phiếu thu chờ + NVL sắp hết
-export function calcDaysLeftBadges(state: State) {
+// onlySaleId: sale chỉ đếm phiếu thu của đơn mình phụ trách
+export function calcDaysLeftBadges(state: State, onlySaleId?: string) {
+  const myOrderIds = onlySaleId ? new Set(state.orders.filter(o => o.saleId === onlySaleId).map(o => o.id)) : null;
   const pendingReceipts = state.receipts.filter(
-    r => r.status === "pending" || r.status === "waiting_admin"
+    r => (r.status === "pending" || r.status === "waiting_admin") && (!myOrderIds || (!!r.orderId && myOrderIds.has(r.orderId)))
   ).length;
 
   const batchesPerDay = state.settings.plannedBatchesPerDay || 8;

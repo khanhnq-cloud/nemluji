@@ -6,18 +6,25 @@ import EmptyState from "@/components/EmptyState";
 import { StatusBadge } from "@/components/Badge";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
+import { supabase, isSupabaseEnabled } from "@/lib/supabase";
 import { can } from "@/lib/permissions";
 import { ROLE_LABEL, formatMoney, formatPct, newId } from "@/lib/utils";
 import { REGIONS } from "@/lib/mock-data";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import type { Profile, Role } from "@/types";
 
-const ROLES = Object.keys(ROLE_LABEL) as Role[];
+const ALL_ROLES = Object.keys(ROLE_LABEL) as Role[];
 
 export default function UsersPage() {
   const { state, update } = useStore();
   const { user } = useAuth();
   const canManage = can(user?.role, "manage_users");
+  const isSuper = user?.role === "superadmin";
+  // Chỉ Super Admin được gán / sửa tài khoản Super Admin
+  const ROLES = isSuper ? ALL_ROLES : ALL_ROLES.filter(r => r !== "superadmin");
+  const canEditProfile = (p: Profile) => canManage && (isSuper || p.role !== "superadmin");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
 
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -28,8 +35,21 @@ export default function UsersPage() {
   });
   const [f, setF] = useState<Partial<Profile>>(blank());
 
-  const openAdd = () => { setEditId(null); setF(blank()); setOpen(true); };
-  const openEdit = (p: Profile) => { setEditId(p.id); setF({ ...p }); setOpen(true); };
+  const openAdd = () => { setEditId(null); setF(blank()); setPassword(""); setOpen(true); };
+  const openEdit = (p: Profile) => { setEditId(p.id); setF({ ...p }); setPassword(""); setOpen(true); };
+
+  // Tạo / cập nhật tài khoản đăng nhập + quyền thật trên Supabase (hàm admin_upsert_user)
+  const syncAccount = async (profile: Profile, pwd: string): Promise<string | null> => {
+    if (!isSupabaseEnabled || !supabase) return profile.id;
+    const { data, error } = await supabase.rpc("admin_upsert_user", {
+      p_email: profile.email, p_password: pwd || null, p_full_name: profile.fullName, p_role: profile.role,
+      p_status: profile.status, p_base_salary: profile.baseSalary, p_commission_pct: profile.commissionPct,
+      p_debt_commission_pct: profile.debtCommissionPct ?? null, p_region: profile.region ?? null,
+      p_factory_level: profile.factoryLevel ?? null,
+    });
+    if (error) { alert(`Không lưu được tài khoản: ${error.message}`); return null; }
+    return String(data);
+  };
 
   const usageOf = (id: string) => {
     const orders = state.orders.filter(o => o.saleId === id).length;
@@ -40,16 +60,19 @@ export default function UsersPage() {
     return orders + customers + leads + approvals + production;
   };
 
-  const submit = () => {
+  const submit = async () => {
+    if (busy) return;
     if (!f.fullName || !f.email) { alert("Họ tên và email là bắt buộc"); return; }
+    if (!editId && password.length < 8) { alert("Nhập mật khẩu đăng nhập (tối thiểu 8 ký tự)"); return; }
+    if (editId && password && password.length < 8) { alert("Mật khẩu mới tối thiểu 8 ký tự"); return; }
     const dupe = state.profiles.some(p => p.email.toLowerCase() === f.email!.toLowerCase() && p.id !== editId);
     if (dupe) { alert("Email đã tồn tại"); return; }
     const role = (f.role as Role) || "sale";
     const isSaleGroup = role === "sale" || role === "manager";
     const profile: Profile = {
       id: editId || newId(),
-      fullName: f.fullName!,
-      email: f.email!,
+      fullName: f.fullName!.trim(),
+      email: f.email!.trim().toLowerCase(),
       role,
       baseSalary: Number(f.baseSalary || 0),
       commissionPct: isSaleGroup ? Number(f.commissionPct || 0) : 0,
@@ -58,22 +81,31 @@ export default function UsersPage() {
       region: f.region || undefined,
       status: (f.status as Profile["status"]) || "active",
     };
+    setBusy(true);
+    const uid = await syncAccount(profile, password);
+    setBusy(false);
+    if (!uid) return;
+    // Người mới: dùng id tài khoản Supabase làm id hồ sơ
+    const saved: Profile = editId ? profile : { ...profile, id: uid };
     update(s => editId
-      ? { ...s, profiles: s.profiles.map(p => p.id === editId ? profile : p) }
-      : { ...s, profiles: [...s.profiles, profile] }
+      ? { ...s, profiles: s.profiles.map(p => p.id === editId ? saved : p) }
+      : { ...s, profiles: [...s.profiles, saved] }
     );
     setOpen(false);
     setF(blank());
+    setPassword("");
   };
 
-  const remove = (p: Profile) => {
+  const remove = async (p: Profile) => {
     if (p.id === user?.id) { alert("Không thể xoá chính tài khoản đang đăng nhập."); return; }
     const used = usageOf(p.id);
     if (used > 0) {
       alert(`Không thể xoá: "${p.fullName}" đang gắn với ${used} chứng từ (đơn/khách/lead/duyệt/SX). Hãy đặt trạng thái "Ngưng" thay vì xoá.`);
       return;
     }
-    if (!confirm(`Xoá người dùng "${p.fullName}"?`)) return;
+    if (!confirm(`Xoá người dùng "${p.fullName}"? Tài khoản sẽ bị khoá đăng nhập.`)) return;
+    const uid = await syncAccount({ ...p, status: "inactive" }, "");
+    if (!uid) return;
     update(s => ({ ...s, profiles: s.profiles.filter(x => x.id !== p.id) }));
   };
 
@@ -81,7 +113,7 @@ export default function UsersPage() {
     <div className="space-y-4">
       <PageHeader
         title="Người dùng"
-        subtitle="Quản lý hồ sơ & tài khoản (6 vai trò). Mật khẩu mặc định: 123456"
+        subtitle="Quản lý hồ sơ & tài khoản đăng nhập. Ngưng = khoá đăng nhập."
         actions={canManage && <button className="btn-primary" onClick={openAdd}><Plus className="h-4 w-4" /> Thêm người dùng</button>}
       />
 
@@ -90,7 +122,7 @@ export default function UsersPage() {
           <thead><tr>
             <th>Họ tên</th><th>Email</th><th>Vai trò</th><th>Khu vực</th>
             <th className="text-right">Lương cứng</th><th className="text-right">% HH đơn</th><th className="text-right">% HH công nợ</th>
-            <th>Trạng thái</th><th>Mật khẩu</th>{canManage && <th></th>}
+            <th>Trạng thái</th>{canManage && <th></th>}
           </tr></thead>
           <tbody>
             {state.profiles.map(p => (
@@ -106,11 +138,12 @@ export default function UsersPage() {
                 <td className="text-right">{p.commissionPct ? formatPct(p.commissionPct) : "—"}</td>
                 <td className="text-right">{p.debtCommissionPct ? formatPct(p.debtCommissionPct) : "—"}</td>
                 <td><StatusBadge status={p.status} /></td>
-                <td><code className="bg-gray-100 px-2 py-0.5 rounded text-xs">123456</code></td>
                 {canManage && (
                   <td className="whitespace-nowrap space-x-1">
-                    <button className="btn-ghost btn-sm" onClick={() => openEdit(p)} title="Sửa"><Pencil className="h-3.5 w-3.5" /></button>
-                    <button className="btn-ghost btn-sm text-red-600" onClick={() => remove(p)} title="Xoá"><Trash2 className="h-3.5 w-3.5" /></button>
+                    {canEditProfile(p) && <>
+                      <button className="btn-ghost btn-sm" onClick={() => openEdit(p)} title="Sửa"><Pencil className="h-3.5 w-3.5" /></button>
+                      <button className="btn-ghost btn-sm text-red-600" onClick={() => remove(p)} title="Xoá"><Trash2 className="h-3.5 w-3.5" /></button>
+                    </>}
                   </td>
                 )}
               </tr>
@@ -129,12 +162,16 @@ export default function UsersPage() {
       <Modal open={open} onClose={() => setOpen(false)} title={editId ? "Sửa người dùng" : "Thêm người dùng"} size="lg" footer={
         <>
           <button className="btn-secondary" onClick={() => setOpen(false)}>Huỷ</button>
-          <button className="btn-primary" onClick={submit}>{editId ? "Lưu thay đổi" : "Thêm"}</button>
+          <button className="btn-primary" onClick={submit} disabled={busy}>{busy ? "Đang lưu…" : editId ? "Lưu thay đổi" : "Thêm"}</button>
         </>
       }>
         <div className="grid sm:grid-cols-2 gap-3">
           <div><label className="label">Họ tên *</label><input className="input" value={f.fullName || ""} onChange={e => setF(x => ({ ...x, fullName: e.target.value }))} /></div>
-          <div><label className="label">Email *</label><input className="input" type="email" value={f.email || ""} onChange={e => setF(x => ({ ...x, email: e.target.value }))} /></div>
+          <div><label className="label">Email đăng nhập *</label><input className="input" type="email" value={f.email || ""} disabled={!!editId} onChange={e => setF(x => ({ ...x, email: e.target.value }))} /></div>
+          <div className="sm:col-span-2">
+            <label className="label">{editId ? "Đặt lại mật khẩu (để trống = giữ nguyên)" : "Mật khẩu đăng nhập *"}</label>
+            <input className="input" type="password" autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Tối thiểu 8 ký tự" />
+          </div>
           <div>
             <label className="label">Vai trò *</label>
             <select className="input" value={f.role} onChange={e => setF(x => ({ ...x, role: e.target.value as Role }))}>
@@ -173,7 +210,7 @@ export default function UsersPage() {
           </div>
         </div>
         <div className="text-xs text-gray-500 mt-3">
-          Mật khẩu đăng nhập mặc định cho mọi tài khoản là <code className="bg-gray-100 px-1 rounded">123456</code>. Người dùng mới có thể đăng nhập ngay sau khi tạo.
+          Lưu sẽ tạo / cập nhật tài khoản đăng nhập ngay. Người dùng mới đăng nhập bằng email và mật khẩu trên. Vai trò quyết định quyền truy cập.
         </div>
       </Modal>
     </div>

@@ -24,9 +24,16 @@ export default function ReceiptsPage() {
 
   const canApprove = can(user?.role, "approve_receipt");
   const canCreate = can(user?.role, "create_receipt");
+  const isSale = user?.role === "sale";
+  // Sale chỉ thấy phiếu thu của đơn mình phụ trách
+  const visibleReceipts = useMemo(() => {
+    if (!isSale) return state.receipts;
+    const myOrderIds = new Set(state.orders.filter(o => o.saleId === user?.id).map(o => o.id));
+    return state.receipts.filter(r => r.orderId && myOrderIds.has(r.orderId));
+  }, [state.receipts, state.orders, isSale, user?.id]);
 
   const rows = useMemo(() => {
-    const filtered = state.receipts.filter(receipt => {
+    const filtered = visibleReceipts.filter(receipt => {
       if (fStatus && receipt.status !== fStatus) return false;
       if (from && receipt.receiptDate < from) return false;
       if (to && receipt.receiptDate > to) return false;
@@ -54,7 +61,7 @@ export default function ReceiptsPage() {
         : String(left).localeCompare(String(right), "vi", { numeric: true, sensitivity: "base" });
       return sortDirection === "asc" ? comparison : -comparison;
     });
-  }, [state.receipts, state.customers, state.orders, state.profiles, fStatus, from, to, sortColumn, sortDirection]);
+  }, [visibleReceipts, state.customers, state.orders, state.profiles, fStatus, from, to, sortColumn, sortDirection]);
 
   const handleSort = (column: string) => {
     const nextColumn = column as ReceiptSortColumn;
@@ -67,30 +74,44 @@ export default function ReceiptsPage() {
   };
 
   const stats = useMemo(() => {
-    const pending = state.receipts.filter(r => r.status === "pending" || r.status === "waiting_admin");
-    const approved = state.receipts.filter(r => r.status === "approved");
+    const pending = visibleReceipts.filter(r => r.status === "pending" || r.status === "waiting_admin");
+    const approved = visibleReceipts.filter(r => r.status === "approved");
     return {
       pendingAmount: pending.reduce((s, r) => s + r.amount, 0),
       pendingCount: pending.length,
       approvedAmount: approved.reduce((s, r) => s + r.amount, 0),
-      waitingAdmin: state.receipts.filter(r => r.status === "waiting_admin").length,
+      waitingAdmin: visibleReceipts.filter(r => r.status === "waiting_admin").length,
     };
-  }, [state.receipts]);
+  }, [visibleReceipts]);
 
   const reportTransferred = (id: string) => {
-    update(s => ({ ...s, receipts: s.receipts.map(r => r.id === id ? { ...r, status: "waiting_admin", note: "Khách báo đã chuyển khoản" } : r) }));
+    update(s => ({ ...s, receipts: s.receipts.map(r => r.id === id && r.status === "pending" ? { ...r, status: "waiting_admin", note: "Khách báo đã chuyển khoản" } : r) }));
   };
   const approve = (id: string) => {
-    update(s => ({ ...s, receipts: s.receipts.map(r => r.id === id ? { ...r, status: "approved", approvedBy: user!.id, approvedAt: todayISO() } : r) }));
+    update(s => {
+      const r0 = s.receipts.find(r => r.id === id);
+      if (!r0 || (r0.status !== "pending" && r0.status !== "waiting_admin")) return s;
+      // Đơn liên quan chuyển sang "đã thanh toán" theo hình thức của phiếu (đồng bộ 2 chiều với Huỷ duyệt)
+      const paid = r0.paymentMethod.toLocaleLowerCase("vi").includes("cash") ? "cash_done" as const : "da_ck" as const;
+      return {
+        ...s,
+        receipts: s.receipts.map(r => r.id === id ? { ...r, status: "approved" as const, approvedBy: user!.id, approvedAt: todayISO() } : r),
+        orders: r0.orderId
+          ? s.orders.map(o => o.id === r0.orderId && o.status === "active" && o.paymentStatus !== "tang" ? { ...o, paymentStatus: paid } : o)
+          : s.orders,
+      };
+    });
   };
   const reject = (id: string) => {
     const note = prompt("Lý do từ chối:") || "";
-    update(s => ({ ...s, receipts: s.receipts.map(r => r.id === id ? { ...r, status: "rejected", note } : r) }));
+    update(s => ({ ...s, receipts: s.receipts.map(r => r.id === id && (r.status === "pending" || r.status === "waiting_admin") ? { ...r, status: "rejected", note } : r) }));
   };
   const cancelApproval = (id: string) => {
     if (!confirm("Huỷ duyệt phiếu thu này? Đơn hàng liên quan sẽ chuyển về Chưa CK.")) return;
     update(current => {
       const receipt = current.receipts.find(item => item.id === id);
+      // Chỉ huỷ được phiếu đang "đã duyệt" và chưa vào chứng từ công nợ
+      if (!receipt || receipt.status !== "approved" || receipt.debtStatementId) return current;
       return {
         ...current,
         receipts: current.receipts.map(item => item.id === id ? {

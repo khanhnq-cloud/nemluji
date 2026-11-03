@@ -66,7 +66,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
   const pathname = usePathname();
   const { user } = useAuth();
   const { state } = useStore();
-  const badges = calcDaysLeftBadges(state);
+  const badges = calcDaysLeftBadges(state, user?.role === "sale" ? user.id : undefined);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const allow = (i: Item) => !i.perm || can(user?.role, i.perm);

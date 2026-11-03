@@ -10,6 +10,7 @@ export type Action =
   | "create_receipt"
   | "approve_receipt" // RULE CỨNG: chỉ admin
   | "view_debts"
+  | "manage_debts" // chốt công nợ / phát hành chứng từ — admin + kế toán
   | "view_expenses"
   | "manage_expenses"
   | "view_leads"
@@ -38,7 +39,7 @@ const ADMIN_ACTIONS: Action[] = [
   "view_customers", "manage_customers",
   "view_orders", "manage_orders",
   "view_receipts", "create_receipt", "approve_receipt",
-  "view_debts", "view_expenses", "manage_expenses", "view_leads", "manage_leads",
+  "view_debts", "manage_debts", "view_expenses", "manage_expenses", "view_leads", "manage_leads",
   "view_production", "manage_production", "manage_materials", "view_materials",
   "create_transfer", "confirm_transfer", "confirm_transfer_factory", "manage_recovery",
   "view_warehouse_hn",
@@ -92,10 +93,10 @@ const matrix: Record<Role, Action[]> = {
   accountant: [
     "view_dashboard",
     "view_customers", "view_orders", "view_receipts",
-    "view_debts", "view_expenses", "manage_expenses",
+    "view_debts", "manage_debts", "view_expenses", "manage_expenses",
     "view_production", "view_materials",
     "view_warehouse_hn",
-    "view_payroll", "manage_payroll",
+    "view_payroll", "manage_payroll", "view_payroll_self",
     "view_reports",
   ],
 };

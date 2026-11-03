@@ -45,11 +45,22 @@ export const formatDateTime = (d: string | Date | null | undefined) => {
   return `${formatDate(d)} ${formatTime(d)}`.trim();
 };
 
-export const todayISO = () => new Date().toISOString().slice(0, 10);
+// Ngày theo giờ địa phương của trình duyệt (VN, UTC+7). toISOString() trả ngày UTC
+// → từ 0h–7h sáng bị lùi về hôm trước.
+export const localDateISO = (d: Date | string = new Date()) => {
+  const date = typeof d === "string" ? new Date(d) : d;
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+
+export const todayISO = () => localDateISO();
 
 export const monthISO = (d: Date | string = new Date()) => {
-  const date = typeof d === "string" ? new Date(d) : d;
-  return date.toISOString().slice(0, 7);
+  // Chuỗi YYYY-MM… giữ nguyên tháng; Date → tháng theo giờ địa phương
+  if (typeof d === "string" && /^\d{4}-\d{2}/.test(d)) return d.slice(0, 7);
+  return localDateISO(d).slice(0, 7);
 };
 
 export const daysBetween = (a: string, b: string) => {
@@ -59,8 +70,9 @@ export const daysBetween = (a: string, b: string) => {
 };
 
 export const addDays = (date: string, days: number) => {
-  const d = new Date(date);
-  d.setDate(d.getDate() + Math.round(days));
+  // Cộng ngày trên lịch (UTC) để không lệch múi giờ
+  const d = new Date(date.slice(0, 10) + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + Math.round(days));
   return d.toISOString().slice(0, 10);
 };
 

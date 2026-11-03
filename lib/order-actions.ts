@@ -58,6 +58,10 @@ export function updateOrderPaymentStatus(
   const paymentMethod = paymentStatus === "cash_done" ? "cash" : "chuyển khoản";
   const approved = receiptStatus === "approved";
   const existingReceipt = state.receipts.find(receipt => receipt.orderId === orderId);
+  const isAdmin = actor.role === "admin" || actor.role === "superadmin";
+  // Phiếu đã vào chứng từ công nợ → khoá; phiếu Admin đã duyệt → chỉ Admin được đổi
+  if (existingReceipt?.debtStatementId) return state;
+  if (existingReceipt?.status === "approved" && !isAdmin) return state;
   const receiptFields = {
     customerId: order.customerId,
     amount: order.revenueNet,

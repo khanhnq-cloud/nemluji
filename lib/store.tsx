@@ -254,8 +254,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       try {
         let rows = await fetchAllRows();
         if (!rows.some(r => r.collection === META)) {
-          // Lần đầu: tạo dữ liệu mặc định (danh mục sản phẩm, tồn kho = 0, cấu hình…)
-          await upsertRows([...stateToRows(initial), { collection: META, id: "seeded", data: { at: new Date().toISOString() } }], true);
+          // Lần đầu: tạo dữ liệu mặc định (danh mục sản phẩm, tồn kho = 0, cấu hình…).
+          // Hồ sơ / cấu hình chỉ Admin ghi được (RLS) → nên để Admin đăng nhập lần đầu.
+          try {
+            await upsertRows([...stateToRows(initial), { collection: META, id: "seeded", data: { at: new Date().toISOString() } }], true);
+          } catch (e) { console.error("Không tạo được dữ liệu mặc định (cần Admin đăng nhập lần đầu)", e); }
           rows = await fetchAllRows();
         }
         // Dữ liệu đã nhập trên máy này trước đây (localStorage) → thêm lên máy chủ, không ghi đè bản đã có
@@ -264,7 +267,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           if (raw && !localStorage.getItem(MIGRATED_KEY)) {
             const have = new Set(rows.map(r => `${r.collection}/${r.id}`));
             const local = stateToRows(withDefaults(JSON.parse(raw)))
-              .filter(r => r.collection !== "settings" && !have.has(`${r.collection}/${r.id}`));
+              // hồ sơ nhân sự / cấu hình chỉ Admin quản lý → không đẩy từ máy cá nhân
+              .filter(r => r.collection !== "settings" && r.collection !== "profiles" && !have.has(`${r.collection}/${r.id}`));
             if (local.length) { await upsertRows(local, true); rows = await fetchAllRows(); }
             localStorage.setItem(MIGRATED_KEY, new Date().toISOString());
           }

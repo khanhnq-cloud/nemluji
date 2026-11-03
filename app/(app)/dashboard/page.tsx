@@ -5,7 +5,7 @@ import StatCard from "@/components/StatCard";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { formatMoney, formatKg, formatPct, todayISO, addDays, daysBetween, CUSTOMER_GROUP_LABEL, LEAD_STATUS_LABEL } from "@/lib/utils";
+import { formatMoney, formatKg, formatPct, todayISO, localDateISO, addDays, daysBetween, CUSTOMER_GROUP_LABEL, LEAD_STATUS_LABEL } from "@/lib/utils";
 import { isBranchDue } from "@/lib/forecast";
 import { materialDaysLeft, materialStockValue } from "@/lib/production";
 import { totalQty } from "@/lib/inventory";
@@ -42,14 +42,14 @@ export default function DashboardPage() {
     if (preset === "last_month") {
       const f = new Date(d.getFullYear(), d.getMonth() - 1, 1);
       const t = new Date(d.getFullYear(), d.getMonth(), 0);
-      return { from: f.toISOString().slice(0, 10), to: t.toISOString().slice(0, 10) };
+      return { from: localDateISO(f), to: localDateISO(t) };
     }
     return { from: cFrom, to: cTo };
   }, [preset, cFrom, cTo]);
 
   // Kỳ so sánh = cùng khoảng ngày tháng trước
   const prevRange = useMemo(() => {
-    const shift = (iso: string) => { const x = new Date(iso); x.setMonth(x.getMonth() - 1); return x.toISOString().slice(0, 10); };
+    const shift = (iso: string) => { const x = new Date(iso + "T00:00:00"); x.setMonth(x.getMonth() - 1); return localDateISO(x); };
     return { from: shift(range.from), to: shift(range.to) };
   }, [range]);
 

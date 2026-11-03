@@ -13,7 +13,7 @@ import { createOrder, updateOrderPaymentStatus, updateOrderShipFee } from "@/lib
 import { adjustInventory, invQty, totalQty } from "@/lib/inventory";
 import { recalcBranchForecast } from "@/lib/forecast";
 import {
-  formatDate, formatTime, formatDateTime, formatKg, formatMoney, formatNumber, newId, nextSequentialCode, todayISO,
+  formatDate, formatTime, formatDateTime, formatKg, formatMoney, formatNumber, newId, nextSequentialCode, todayISO, localDateISO,
   PAYMENT_STATUS_LABEL, CUSTOMER_GROUP_LABEL, COMPANY_ASSIGNEE,
 } from "@/lib/utils";
 import { Plus, Trash2, X, Gift, Eye, Download, Warehouse, UserPlus, Filter, HandCoins } from "lucide-react";
@@ -194,7 +194,7 @@ export default function OrdersPage() {
   const canEditOrderToday = (order: Order) =>
     order.status === "active" &&
     can(user?.role, "manage_orders") &&
-    order.createdAt.slice(0, 10) === todayISO();
+    localDateISO(order.createdAt) === todayISO();
 
   const saveShipFee = (orderId: string, value: string) => {
     const shipFee = Number(value);
@@ -204,6 +204,9 @@ export default function OrdersPage() {
 
   const savePaymentStatus = (orderId: string, paymentStatus: PaymentStatus) => {
     if (!user) return;
+    const rc = state.receipts.find(r => r.orderId === orderId);
+    if (rc?.debtStatementId) { alert("Phiếu thu đã vào chứng từ công nợ — không đổi được trạng thái thanh toán."); return; }
+    if (rc?.status === "approved" && !can(user.role, "approve_receipt")) { alert("Phiếu thu đã được Admin duyệt — chỉ Admin được đổi."); return; }
     update(current => updateOrderPaymentStatus(current, orderId, paymentStatus, user));
   };
 
@@ -289,6 +292,17 @@ export default function OrdersPage() {
     // Chi nhánh tự gán = chi nhánh đầu của khách (dữ liệu đi từ /customers)
     const branch = state.branches.find(b => b.customerId === form.customerId);
     if (!branch) { alert("Khách chưa có chi nhánh. Vào /customers thêm chi nhánh trước."); return; }
+    // Không bán vượt tồn Kho Cát Linh (tính cả hàng tặng) — tránh tồn âm
+    const needByProduct = new Map<string, number>();
+    for (const it of form.items) needByProduct.set(it.productId, (needByProduct.get(it.productId) || 0) + it.quantity);
+    for (const [productId, need] of Array.from(needByProduct.entries())) {
+      const avail = invQty(state.clInventory, productId);
+      if (need > avail + 1e-9) {
+        const name = state.products.find(p => p.id === productId)?.name || productId;
+        alert(`Tồn Kho Cát Linh không đủ: ${name} còn ${avail} kg, đơn cần ${need} kg.`);
+        return;
+      }
+    }
     if (calc.cost > calc.revenueNet) {
       if (!confirm("⚠️ Cost > Net Revenue (đơn lỗ). Vẫn lưu?")) return;
     }
@@ -306,11 +320,17 @@ export default function OrdersPage() {
   };
 
   const cancelOrder = (id: string) => {
+    // Đơn đã có phiếu thu được duyệt (tiền đã về) → phải Huỷ duyệt ở Phiếu thu trước
+    if (state.receipts.some(r => r.orderId === id && r.status === "approved")) {
+      alert("Đơn đã có phiếu thu được duyệt. Admin cần Huỷ duyệt phiếu thu trước khi huỷ đơn.");
+      return;
+    }
     const reason = prompt("Lý do huỷ đơn:");
     if (!reason) return;
     update(s => {
       const order = s.orders.find(o => o.id === id);
       if (!order || order.status === "cancelled") return s;
+      if (s.receipts.some(r => r.orderId === id && r.status === "approved")) return s;
       const orders = s.orders.map(o => o.id === id ? { ...o, status: "cancelled" as const, cancelReason: reason } : o);
       // Trả hàng về kho Cát Linh (lúc tạo đơn đã trừ cả hàng tặng)
       let clInventory = s.clInventory;

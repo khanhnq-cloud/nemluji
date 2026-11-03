@@ -6,7 +6,7 @@ import EmptyState from "@/components/EmptyState";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { formatMoney, formatKg, formatPct, monthISO, CUSTOMER_GROUP_LABEL } from "@/lib/utils";
+import { formatMoney, formatKg, formatPct, monthISO, localDateISO, CUSTOMER_GROUP_LABEL } from "@/lib/utils";
 import { Download, Lock } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line } from "recharts";
 
@@ -19,7 +19,7 @@ export default function ReportsPage() {
   const prevPeriod = useMemo(() => {
     const [y, m] = period.split("-").map(Number);
     const d = new Date(y, m - 2, 1);
-    return d.toISOString().slice(0, 7);
+    return localDateISO(d).slice(0, 7);
   }, [period]);
 
   const agg = (mk: string) => {

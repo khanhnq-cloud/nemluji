@@ -42,12 +42,16 @@ export default function RecoveryPage() {
       note: "Hút lại từ MCK", createdBy: user!.id,
       transferId: t.id, mckLogId: t.mckLogId, sentToFactoryDate: t.transferDate,
     };
-    update(s => ({
-      ...s,
-      recoveryLogs: [log, ...s.recoveryLogs],
-      recoverInventory: adjustInventory(s.recoverInventory, t.productId, t.qtyKg),
-      mckLogs: t.mckLogId ? s.mckLogs.map(m => m.id === t.mckLogId ? { ...m, status: "recovered" } : m) : s.mckLogs,
-    }));
+    update(s => {
+      // Mỗi phiếu chỉ hút lại 1 lần (tránh cộng kho recover 2 lần khi 2 máy cùng bấm)
+      if (s.recoveryLogs.some(r => r.transferId === t.id)) return s;
+      return {
+        ...s,
+        recoveryLogs: [log, ...s.recoveryLogs],
+        recoverInventory: adjustInventory(s.recoverInventory, t.productId, t.qtyKg),
+        mckLogs: t.mckLogId ? s.mckLogs.map(m => m.id === t.mckLogId ? { ...m, status: "recovered" as const } : m) : s.mckLogs,
+      };
+    });
   };
 
   // Chuyển hàng recover về Kho Cát Linh (tạo phiếu chuyển recover_to_cl, chờ CL xác nhận)

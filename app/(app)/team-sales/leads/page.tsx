@@ -6,6 +6,7 @@ import EmptyState from "@/components/EmptyState";
 import { LeadBadge } from "@/components/Badge";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
+import { adjustInventory, invQty } from "@/lib/inventory";
 import { can } from "@/lib/permissions";
 import {
   CUSTOMER_GROUP_LABEL, LEAD_STATUS_LABEL, VISIT_TYPE_LABEL,
@@ -20,6 +21,7 @@ const GROUPS = Object.keys(CUSTOMER_GROUP_LABEL);
 export default function LeadsPage() {
   const { state, update } = useStore();
   const { user } = useAuth();
+  const showFin = can(user?.role, "view_financials"); // cost hàng mẫu — chỉ admin
   const isSale = user?.role === "sale";
   const [fStatus, setFStatus] = useState("");
   const [openNew, setOpenNew] = useState(false);
@@ -43,7 +45,7 @@ export default function LeadsPage() {
     const lead: Lead = {
       id: newId(), leadCode: nextSequentialCode("LD", state.leads.map(l => l.leadCode)), saleId: lf.saleId!,
       customerName: lf.customerName!, region: lf.region || REGIONS[0],
-      customerGroup: (lf.customerGroup as any) || "quan_an", phone: lf.phone!,
+      customerGroup: (lf.customerGroup as Lead["customerGroup"]) || "quan_an_nha_hang", phone: lf.phone!,
       addresses: (lf.addresses || []).filter(Boolean),
       offeredPrice: lf.offeredPrice, offeredGiftProgram: lf.offeredGiftProgram,
       offeredDiscountProgram: lf.offeredDiscountProgram, expectedRevenue: lf.expectedRevenue,
@@ -99,7 +101,7 @@ export default function LeadsPage() {
         <table className="table-base">
           <thead><tr>
             <th>Mã</th><th>Ngày</th><th>Sale</th><th>Khách</th><th>Khu</th><th>Nhóm</th>
-            <th className="text-right">Hàng mẫu</th><th className="text-right">Cost mẫu</th><th>Visit</th><th>Trạng thái</th><th></th>
+            <th className="text-right">Hàng mẫu</th>{showFin && <th className="text-right">Cost mẫu</th>}<th>Visit</th><th>Trạng thái</th><th></th>
           </tr></thead>
           <tbody>
             {leads.map(l => {
@@ -114,7 +116,7 @@ export default function LeadsPage() {
                   <td>{l.region}</td>
                   <td>{CUSTOMER_GROUP_LABEL[l.customerGroup]}</td>
                   <td className="text-right">{l.sampleQtyTotal}</td>
-                  <td className="text-right">{formatMoney(l.sampleCostTotal)}</td>
+                  {showFin && <td className="text-right">{formatMoney(l.sampleCostTotal)}</td>}
                   <td>{l.visits.length} lần{lastVisit?.nextActionDate && <div className="text-xs text-amber-600">Hẹn: {formatDate(lastVisit.nextActionDate)}</div>}</td>
                   <td><LeadBadge status={l.leadStatus} /></td>
                   <td onClick={e => e.stopPropagation()}>
@@ -186,6 +188,12 @@ function LeadDetailModal({ lead, onClose, onSetStatus }: { lead: Lead | null; on
   const addVisit = () => {
     if (!vf.content) { alert("Nhập nội dung visit"); return; }
     const newSample = vf.sampleProductId && vf.sampleQty ? [{ productId: vf.sampleProductId, qty: Number(vf.sampleQty) }] : [];
+    // Hàng phát thử lấy từ Kho Cát Linh → phải đủ tồn
+    for (const s of newSample) {
+      if (!(s.qty > 0)) { alert("Số lượng hàng mẫu phải > 0"); return; }
+      const avail = invQty(state.clInventory, s.productId);
+      if (s.qty > avail + 1e-9) { alert(`Tồn Kho Cát Linh không đủ hàng mẫu (còn ${avail} kg)`); return; }
+    }
     const visit: LeadVisit = {
       id: newId(), leadId: lead.id, visitDate: vf.visitDate || todayISO(),
       visitType: (vf.visitType as any) || "gap", content: vf.content!,
@@ -200,6 +208,8 @@ function LeadDetailModal({ lead, onClose, onSetStatus }: { lead: Lead | null; on
     });
     update(st => ({
       ...st,
+      // Trừ tồn Kho Cát Linh theo hàng mẫu đã phát
+      clInventory: newSample.reduce((inv, s) => adjustInventory(inv, s.productId, -s.qty), st.clInventory),
       leads: st.leads.map(l => l.id === lead.id ? {
         ...l, visits: [...l.visits, visit],
         sampleQtyTotal: l.sampleQtyTotal + addQty,
@@ -224,7 +234,7 @@ function LeadDetailModal({ lead, onClose, onSetStatus }: { lead: Lead | null; on
 
         <div className="grid sm:grid-cols-3 gap-3 text-sm">
           <Info label="Tổng hàng mẫu" value={`${lead.sampleQtyTotal}`} />
-          <Info label="Tổng cost mẫu" value={formatMoney(lead.sampleCostTotal)} />
+          {can(user?.role, "view_financials") && <Info label="Tổng cost mẫu" value={formatMoney(lead.sampleCostTotal)} />}
           <Info label="Giá chào" value={lead.offeredPrice ? formatMoney(lead.offeredPrice) : "—"} />
         </div>
 

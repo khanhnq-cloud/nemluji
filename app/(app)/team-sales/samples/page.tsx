@@ -5,12 +5,14 @@ import StatCard from "@/components/StatCard";
 import EmptyState from "@/components/EmptyState";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { formatMoney, formatPct, LEAD_STATUS_LABEL } from "@/lib/utils";
 
 export default function SamplesPage() {
   const { state } = useStore();
   const { user } = useAuth();
   const isSale = user?.role === "sale";
+  const showFin = can(user?.role, "view_financials"); // cost hàng mẫu (theo giá vốn) — chỉ admin
 
   const leads = useMemo(() => state.leads.filter(l => !isSale || l.saleId === user?.id), [state.leads, isSale, user]);
 
@@ -41,7 +43,7 @@ export default function SamplesPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard label="Tổng lead" value={leads.length} />
         <StatCard label="Đã chốt" value={leads.filter(l => l.leadStatus === "da_chot").length} tone="good" />
-        <StatCard label="Tổng cost hàng mẫu" value={formatMoney(totalSampleCost)} tone="warn" />
+        {showFin && <StatCard label="Tổng cost hàng mẫu" value={formatMoney(totalSampleCost)} tone="warn" />}
         <StatCard label="Tỷ lệ chốt TB" value={formatPct(leads.length ? leads.filter(l => l.leadStatus === "da_chot").length / leads.length * 100 : 0)} />
       </div>
 
@@ -49,7 +51,7 @@ export default function SamplesPage() {
         <table className="table-base">
           <thead><tr>
             <th>Sale</th><th className="text-right">Lead</th><th className="text-right">Chốt</th>
-            <th className="text-right">Tỷ lệ chốt</th><th className="text-right">SL hàng mẫu</th><th className="text-right">Cost hàng mẫu</th>
+            <th className="text-right">Tỷ lệ chốt</th><th className="text-right">SL hàng mẫu</th>{showFin && <th className="text-right">Cost hàng mẫu</th>}
           </tr></thead>
           <tbody>
             {bySale.map(r => (
@@ -59,7 +61,7 @@ export default function SamplesPage() {
                 <td className="text-right">{r.won}</td>
                 <td className="text-right">{formatPct(r.convRate)}</td>
                 <td className="text-right">{r.sampleQty}</td>
-                <td className="text-right font-medium">{formatMoney(r.sampleCost)}</td>
+                {showFin && <td className="text-right font-medium">{formatMoney(r.sampleCost)}</td>}
               </tr>
             ))}
           </tbody>

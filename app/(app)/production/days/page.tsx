@@ -12,7 +12,7 @@ import { computeUsages, computeBatchResult, batchesRemaining, effectiveMaterialC
 import { adjustInventory, invQty, totalQty } from "@/lib/inventory";
 import { formatDate, formatMoney, formatKg, formatNumber, formatPct, nextSequentialCode, newId, todayISO } from "@/lib/utils";
 import { Plus, Eye, Lock, AlertTriangle } from "lucide-react";
-import type { ProductionDay, StockTransfer, ProductQty, MaterialQty } from "@/types";
+import type { ProductionDay, StockTransfer, ProductQty, MaterialQty, Expense } from "@/types";
 
 export default function ProductionDaysPage() {
   const { state, update } = useStore();
@@ -75,6 +75,8 @@ export default function ProductionDaysPage() {
     if (form.batch1Count <= 0 && form.batch2Count <= 0) { alert("Nhập số mẻ"); return; }
     if (outputTotal <= 0) { alert("Nhập kg thành phẩm (Ra thành phẩm)"); return; }
     if (state.productionDays.some(d => d.productionDate === form.productionDate)) { alert("Ngày sản xuất này đã tồn tại"); return; }
+    if (form.productionDate > todayISO()) { alert("Ngày sản xuất không được ở tương lai"); return; }
+    if (form.extraCostFactory < 0) { alert("Chi phí phát sinh không được âm"); return; }
     if (hasNegative) { alert("Không thể chốt: tồn NVL sẽ âm. Cần nhập thêm NVL."); return; }
     for (const p of outputProducts) {
       const out = form.outputs[p.id] || 0;
@@ -84,6 +86,8 @@ export default function ProductionDaysPage() {
     }
 
     update(s => {
+      // Chống tạo trùng ngày khi 2 máy cùng chốt
+      if (s.productionDays.some(d => d.productionDate === form.productionDate)) return s;
       // 1) trừ lùi NVL theo định mức + snapshot tồn đầu/cuối
       const materialOpening: MaterialQty[] = activeMaterials.map(m => ({ materialId: m.id, qty: m.qty }));
       const materials = s.materials.map(m => {
@@ -134,7 +138,18 @@ export default function ProductionDaysPage() {
         standardOutputPerBatch2, materialCostPerBatch2,
         lossPerBatch: result.lossPerBatch, materialStockValueEnd: Math.round(materialStockValueEnd),
       };
-      return { ...s, productionDays: [day, ...s.productionDays], materials, factoryInventory, transfers };
+      // Chi phí lặt vặt xưởng → phiếu chi (vào Tổng chi phí ngày)
+      let expenses = s.expenses;
+      if (form.extraCostFactory > 0) {
+        const exp: Expense = {
+          id: newId(), code: nextSequentialCode("PC", s.expenses.map(e => e.code)), date: form.productionDate,
+          type: "factory_extra", amount: Math.round(form.extraCostFactory), refId: day.id,
+          note: `Chi phí phát sinh xưởng — ${day.productionCode}`,
+          createdBy: user!.id, createdAt: new Date().toISOString(),
+        };
+        expenses = [exp, ...expenses];
+      }
+      return { ...s, productionDays: [day, ...s.productionDays], materials, factoryInventory, transfers, expenses };
     });
     setOpen(false); setShowPreview(false); setForm(blank());
   };

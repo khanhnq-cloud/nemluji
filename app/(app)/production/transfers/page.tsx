@@ -59,7 +59,8 @@ export default function TransfersPage() {
   const confirmReceive = (id: string) => {
     update(s => {
       const t = s.transfers.find(x => x.id === id);
-      if (!t) return s;
+      // Chỉ phiếu đang chờ mới nhận được (tránh cộng tồn 2 lần khi 2 người cùng bấm)
+      if (!t || t.status !== "pending") return s;
       const dir = t.direction || "factory_to_cl";
       const transfers = s.transfers.map(x => x.id === id ? { ...x, status: "received" as const, receivedBy: user!.id, receivedAt: todayISO() } : x);
       // factory_to_cl và recover_to_cl → cộng tồn Kho Cát Linh (hàng bán được)
@@ -88,14 +89,17 @@ export default function TransfersPage() {
       if (dir === "recover_to_cl") {
         return { ...s, transfers, recoverInventory: adjustInventory(s.recoverInventory, cur.productId, cur.qtyKg) };
       }
-      // cl_to_factory (MCK) → hoàn tồn Cát Linh, lùi trạng thái MCK, huỷ phiếu chi ship nếu có
+      // cl_to_factory (MCK) → hàng quay lại "MCK chờ xử lý" (KHÔNG cộng tồn bán được:
+      // tồn CL đã trừ lúc ghi MCK), lùi trạng thái MCK, huỷ phiếu chi ship nếu có.
+      // Phiếu không gắn MCK (dữ liệu cũ) → trả về tồn CL như trước.
       const mckLogs = cur.mckLogId
         ? s.mckLogs.map(m => m.id === cur.mckLogId
             ? { ...m, resolvedQty: Math.max(0, +((m.resolvedQty || 0) - cur.qtyKg).toFixed(2)), status: "pending" as const }
             : m)
         : s.mckLogs;
       const expenses = cur.expenseId ? s.expenses.filter(e => e.id !== cur.expenseId) : s.expenses;
-      return { ...s, transfers, clInventory: adjustInventory(s.clInventory, cur.productId, cur.qtyKg), mckLogs, expenses };
+      const clInventory = cur.mckLogId ? s.clInventory : adjustInventory(s.clInventory, cur.productId, cur.qtyKg);
+      return { ...s, transfers, clInventory, mckLogs, expenses };
     });
   };
 

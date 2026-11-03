@@ -9,6 +9,7 @@ import { StatusBadge } from "@/components/Badge";
 import DebtDocumentViewer from "@/components/debts/DebtDocumentViewer";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import {
   buildDebtStatementLines,
   buildMonthlyCustomerDebts,
@@ -49,10 +50,15 @@ export default function DebtsPage() {
   const [discountDrafts, setDiscountDrafts] = useState<Record<string, DiscountDraft>>({});
   const [notice, setNotice] = useState("");
 
-  const monthlyDebts = useMemo(
-    () => buildMonthlyCustomerDebts(period, state.orders, state.receipts),
-    [period, state.orders, state.receipts],
-  );
+  const canClose = can(user?.role, "manage_debts");
+  const isSale = user?.role === "sale";
+  // Sale chỉ thấy công nợ của khách mình phụ trách
+  const monthlyDebts = useMemo(() => {
+    const all = buildMonthlyCustomerDebts(period, state.orders, state.receipts);
+    if (!isSale) return all;
+    const mine = new Set(state.customers.filter(c => c.assignedSaleId === user?.id).map(c => c.id));
+    return all.filter(d => mine.has(d.customerId));
+  }, [period, state.orders, state.receipts, state.customers, isSale, user?.id]);
 
   const statementByCustomer = useMemo(() => {
     const map = new Map<string, DebtStatement>();
@@ -72,6 +78,7 @@ export default function DebtsPage() {
     sum + (statementByCustomer.get(debt.customerId)?.closingBalance ?? debt.closingBalance), 0);
 
   const openClosing = (debts: MonthlyCustomerDebt[]) => {
+    if (!canClose) return;
     const eligible = debts.filter(debt => !statementByCustomer.has(debt.customerId));
     if (eligible.length === 0) {
       setNotice(`Tất cả khách hàng trong ${formatPeriodMonth(period).toLowerCase()} đã được chốt.`);
@@ -94,6 +101,7 @@ export default function DebtsPage() {
   };
 
   const issueStatements = () => {
+    if (!canClose) return;
     const closedKeys = new Set(state.debtStatements.map(statement => `${statement.periodMonth}:${statement.customerId}`));
     const eligible = closingDebts.filter(debt => !closedKeys.has(`${period}:${debt.customerId}`));
     if (eligible.length === 0) {
@@ -204,10 +212,12 @@ export default function DebtsPage() {
               onChange={event => { setPeriod(event.target.value); setNotice(""); }}
               aria-label="Tháng chốt công nợ"
             />
-            <button className="btn-primary" onClick={() => openClosing(unclosedDebts)} disabled={unclosedDebts.length === 0}>
-              <Lock className="h-4 w-4" />
-              Chốt {unclosedDebts.length || "toàn bộ"} khách
-            </button>
+            {canClose && (
+              <button className="btn-primary" onClick={() => openClosing(unclosedDebts)} disabled={unclosedDebts.length === 0}>
+                <Lock className="h-4 w-4" />
+                Chốt {unclosedDebts.length || "toàn bộ"} khách
+              </button>
+            )}
           </>
         }
       />
@@ -279,11 +289,11 @@ export default function DebtsPage() {
                         <button className="btn-secondary btn-sm" onClick={() => setViewStatementId(statement.id)}>
                           <Eye className="h-3.5 w-3.5" /> Xem chứng từ
                         </button>
-                      ) : (
+                      ) : canClose ? (
                         <button className="btn-primary btn-sm" onClick={() => openClosing([debt])}>
                           <Percent className="h-3.5 w-3.5" /> CK sớm & chốt
                         </button>
-                      )}
+                      ) : <span className="text-xs text-gray-400">Chờ kế toán chốt</span>}
                     </td>
                   </tr>
                 );
