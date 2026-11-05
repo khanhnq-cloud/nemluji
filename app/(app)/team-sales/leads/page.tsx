@@ -7,6 +7,7 @@ import { LeadBadge } from "@/components/Badge";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { adjustInventory, invQty } from "@/lib/inventory";
+import { confirmNewCustomer } from "@/lib/customers";
 import { can } from "@/lib/permissions";
 import {
   CUSTOMER_GROUP_LABEL, LEAD_STATUS_LABEL, VISIT_TYPE_LABEL,
@@ -63,11 +64,12 @@ export default function LeadsPage() {
   const convertToCustomer = (l: Lead) => {
     if (l.convertedCustomerId) { alert("Lead đã chuyển khách"); return; }
     if (!confirm(`Tạo khách hàng từ lead "${l.customerName}"?`)) return;
+    if (!confirmNewCustomer(state.customers, { fullName: l.customerName, phone: l.phone })) return;
     const custId = newId();
     const code = nextSequentialCode("KH", state.customers.map(c => c.customerCode));
     const cust: Customer = {
       id: custId, customerCode: code, fullName: l.customerName,
-      customerGroup: l.customerGroup, region: l.region, assignedSaleId: l.saleId,
+      customerGroup: l.customerGroup, region: l.region, assignedSaleId: l.saleId, phone: l.phone,
       source: "Sale thị trường", status: "active", note: `Từ lead ${l.leadCode}`,
     };
     const branch: CustomerBranch = {

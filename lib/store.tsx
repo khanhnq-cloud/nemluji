@@ -92,9 +92,9 @@ const TABLE = "app_records";
 const META = "_meta";
 type Row = { collection: string; id: string; data: any; updated_by?: string | null };
 
-// localStorage cũ (trước khi dùng chung) — đẩy lên máy chủ 1 lần cho mỗi máy
+// Chế độ demo 1 máy (không cấu hình Supabase). Khi có Supabase KHÔNG đẩy localStorage lên máy chủ:
+// bản sao cũ có id khác sẽ tạo khách / đơn trùng mã.
 const STORAGE_KEY = "nnnt_state_v9";
-const MIGRATED_KEY = "nnnt_state_v9_migrated";
 
 function withDefaults(saved: Partial<State>): State {
   return { ...initial, ...saved, settings: { ...initial.settings, ...(saved.settings || {}) } };
@@ -261,18 +261,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           } catch (e) { console.error("Không tạo được dữ liệu mặc định (cần Admin đăng nhập lần đầu)", e); }
           rows = await fetchAllRows();
         }
-        // Dữ liệu đã nhập trên máy này trước đây (localStorage) → thêm lên máy chủ, không ghi đè bản đã có
-        try {
-          const raw = localStorage.getItem(STORAGE_KEY);
-          if (raw && !localStorage.getItem(MIGRATED_KEY)) {
-            const have = new Set(rows.map(r => `${r.collection}/${r.id}`));
-            const local = stateToRows(withDefaults(JSON.parse(raw)))
-              // hồ sơ nhân sự / cấu hình chỉ Admin quản lý → không đẩy từ máy cá nhân
-              .filter(r => r.collection !== "settings" && r.collection !== "profiles" && !have.has(`${r.collection}/${r.id}`));
-            if (local.length) { await upsertRows(local, true); rows = await fetchAllRows(); }
-            localStorage.setItem(MIGRATED_KEY, new Date().toISOString());
-          }
-        } catch (e) { console.error("Không đẩy được dữ liệu cũ của máy này", e); }
 
         if (cancelled) return;
         const loaded = rowsToState(rows);

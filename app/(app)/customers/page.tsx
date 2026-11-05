@@ -10,6 +10,7 @@ import { useAuth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { CUSTOMER_GROUP_LABEL, B2B_GROUPS, COMPANY_ASSIGNEE, assigneeName, formatDate, formatMoney, nextSequentialCode, monthISO, newId } from "@/lib/utils";
 import { isBranchDue } from "@/lib/forecast";
+import { confirmNewCustomer } from "@/lib/customers";
 import { REGIONS, SOURCES } from "@/lib/mock-data";
 import { Plus, ChevronDown, ChevronRight, MapPin, ArrowRight } from "lucide-react";
 import type { Customer, CustomerBranch } from "@/types";
@@ -68,6 +69,7 @@ export default function CustomersPage() {
       alert("Nhập đầy đủ tên công ty, địa chỉ, điện thoại, người đại diện và chức vụ");
       return;
     }
+    if (!confirmNewCustomer(state.customers, cf)) return;
     const custId = newId();
     const code = nextSequentialCode("KH", state.customers.map(c => c.customerCode));
     const b2b = B2B_GROUPS.includes(cf.customerGroup || "");

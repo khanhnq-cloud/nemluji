@@ -12,6 +12,7 @@ import { calcOrder, calcOrderItem } from "@/lib/cost";
 import { createOrder, updateOrderPaymentStatus, updateOrderShipFee } from "@/lib/order-actions";
 import { adjustInventory, invQty, totalQty } from "@/lib/inventory";
 import { recalcBranchForecast } from "@/lib/forecast";
+import { confirmNewCustomer } from "@/lib/customers";
 import {
   formatDate, formatTime, formatDateTime, formatKg, formatMoney, formatNumber, newId, nextSequentialCode, todayISO, localDateISO,
   PAYMENT_STATUS_LABEL, CUSTOMER_GROUP_LABEL, COMPANY_ASSIGNEE,
@@ -145,6 +146,8 @@ export default function OrdersPage() {
       alert("Nhập đầy đủ thông tin doanh nghiệp của khách Siêu thị / Minimart.");
       return;
     }
+
+    if (!confirmNewCustomer(state.customers, draft)) return;
 
     const customerId = newId();
     const customerCode = nextSequentialCode("KH", state.customers.map(customer => customer.customerCode));

@@ -80,5 +80,4 @@ supabase-schema.sql     Schema PostgreSQL đầy đủ (mục 10 guideline)
 Khi có Supabase, **toàn bộ dữ liệu nghiệp vụ dùng chung** cho mọi tài khoản qua bảng `app_records`
 (mỗi bản ghi của `useStore()` là 1 dòng `(collection, id) → data`), đồng bộ realtime giữa các máy.
 Lần đăng nhập đầu tiên tạo dữ liệu mặc định (danh mục sản phẩm, tồn kho = 0, cấu hình).
-Dữ liệu từng nhập trên một máy (localStorage cũ) được tự đẩy lên máy chủ 1 lần khi máy đó đăng nhập.
 Không cấu hình Supabase → app chạy chế độ demo 1 máy bằng localStorage.
