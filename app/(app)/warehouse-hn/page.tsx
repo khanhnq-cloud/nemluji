@@ -42,7 +42,7 @@ export default function WarehouseHnPage() {
     if (!purchase || !user) return;
     if (!purchase.productId) { alert("Chọn sản phẩm nhập"); return; }
     if (!(purchase.qty > 0)) { alert("Số lượng nhập phải lớn hơn 0"); return; }
-    if (!(purchase.unitPrice > 0)) { alert("Giá nhập phải lớn hơn 0"); return; }
+    if (!(purchase.unitPrice >= 0)) { alert("Giá nhập không được âm"); return; }
     if (!purchase.purchaseDate || purchase.purchaseDate > todayISO()) { alert("Ngày nhập không hợp lệ"); return; }
     update(s => createStockPurchase(s, purchase, user));
     setPurchase(null);
@@ -248,8 +248,8 @@ export default function WarehouseHnPage() {
                 <input className="input" type="number" min={0} step="0.01" value={purchase.qty || ""} onChange={e => setPurchase(f => f && { ...f, qty: Number(e.target.value) })} />
               </div>
               <div>
-                <label className="label">Giá nhập / đơn vị (đ) *</label>
-                <input className="input" type="number" min={0} value={purchase.unitPrice || ""} onChange={e => setPurchase(f => f && { ...f, unitPrice: Number(e.target.value) })} />
+                <label className="label">Giá nhập / đơn vị (đ)</label>
+                <input className="input" type="number" min={0} placeholder="0" value={purchase.unitPrice || ""} onChange={e => setPurchase(f => f && { ...f, unitPrice: Number(e.target.value) })} />
               </div>
             </div>
             <div className="text-sm">Thành tiền: <b>{formatMoney(Math.round(purchase.qty * purchase.unitPrice))}</b></div>

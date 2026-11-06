@@ -8,7 +8,7 @@ import SortableHeader, { type SortDirection } from "@/components/SortableHeader"
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { calcOrder, calcOrderItem } from "@/lib/cost";
+import { calcOrder, calcOrderItem, effectivePaymentStatus, isGiftOrder } from "@/lib/cost";
 import { createOrder, updateOrderPaymentStatus, updateOrderShipFee } from "@/lib/order-actions";
 import { adjustInventory, invQty, totalQty } from "@/lib/inventory";
 import { recalcBranchForecast } from "@/lib/forecast";
@@ -226,7 +226,7 @@ export default function OrdersPage() {
     const rows = state.orders.filter(o => {
       if (isSale && o.saleId !== user?.id) return false;
       if (fSale && o.saleId !== fSale) return false;
-      if (fPay && o.paymentStatus !== fPay) return false;
+      if (fPay && effectivePaymentStatus(o) !== fPay) return false;
       if (from && o.orderDate < from) return false;
       if (to && o.orderDate > to) return false;
       if (fGroup) {
@@ -246,7 +246,7 @@ export default function OrdersPage() {
         case "giftQty": return giftQtyOf(order);
         case "revenue": return order.revenue;
         case "ship": return order.shipFee;
-        case "payment": return PAYMENT_STATUS_LABEL[order.paymentStatus] || order.paymentStatus;
+        case "payment": return PAYMENT_STATUS_LABEL[effectivePaymentStatus(order)];
       }
     };
 
@@ -306,7 +306,7 @@ export default function OrdersPage() {
         return;
       }
     }
-    if (calc.cost > calc.revenueNet) {
+    if (calc.cost > calc.revenueNet && !isGiftOrder(form)) {
       if (!confirm("⚠️ Cost > Net Revenue (đơn lỗ). Vẫn lưu?")) return;
     }
     const pct = state.profiles.find(p => p.id === form.saleId)?.commissionPct ?? state.settings.defaultCommissionPct;
@@ -324,7 +324,8 @@ export default function OrdersPage() {
 
   const cancelOrder = (id: string) => {
     // Đơn đã có phiếu thu được duyệt (tiền đã về) → phải Huỷ duyệt ở Phiếu thu trước
-    if (state.receipts.some(r => r.orderId === id && r.status === "approved")) {
+    const target = state.orders.find(o => o.id === id);
+    if (target && !isGiftOrder(target) && state.receipts.some(r => r.orderId === id && r.status === "approved")) {
       alert("Đơn đã có phiếu thu được duyệt. Admin cần Huỷ duyệt phiếu thu trước khi huỷ đơn.");
       return;
     }
@@ -333,7 +334,7 @@ export default function OrdersPage() {
     update(s => {
       const order = s.orders.find(o => o.id === id);
       if (!order || order.status === "cancelled") return s;
-      if (s.receipts.some(r => r.orderId === id && r.status === "approved")) return s;
+      if (!isGiftOrder(order) && s.receipts.some(r => r.orderId === id && r.status === "approved")) return s;
       const orders = s.orders.map(o => o.id === id ? { ...o, status: "cancelled" as const, cancelReason: reason } : o);
       // Trả hàng về kho Cát Linh (lúc tạo đơn đã trừ cả hàng tặng)
       let clInventory = s.clInventory;
@@ -368,7 +369,7 @@ export default function OrdersPage() {
         o.orderCode, formatDate(o.orderDate), formatTime(o.createdAt), c?.fullName, sl?.fullName,
         soldQtyOf(o), giftQtyOf(o), o.revenue, o.shipFee,
         ...(showFin ? [o.revenueNet, o.cost, o.saleCommission, o.profitNet] : []),
-        PAYMENT_STATUS_LABEL[o.paymentStatus] || o.paymentStatus, o.status === "active" ? "Hoạt động" : "Đã huỷ",
+        PAYMENT_STATUS_LABEL[effectivePaymentStatus(o)], o.status === "active" ? "Hoạt động" : "Đã huỷ",
       ].map(esc).join(","));
     });
     const blob = new Blob(["﻿" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
@@ -430,7 +431,7 @@ export default function OrdersPage() {
         </select>
         <select className="input w-40" value={fPay} onChange={e => setFPay(e.target.value)}>
           <option value="">Tất cả TT</option>
-          {ORDER_PAYMENT_STATUSES.map(status => <option key={status} value={status}>{PAYMENT_STATUS_LABEL[status]}</option>)}
+          {[...ORDER_PAYMENT_STATUSES, "tang" as const].map(status => <option key={status} value={status}>{PAYMENT_STATUS_LABEL[status]}</option>)}
         </select>
       </div>
 
@@ -478,7 +479,7 @@ export default function OrdersPage() {
                     ) : formatMoney(o.shipFee)}
                   </td>
                   <td onClick={event => event.stopPropagation()}>
-                    {canEditOrderToday(o) ? (
+                    {canEditOrderToday(o) && !isGiftOrder(o) ? (
                       <select
                         className="input min-w-32 py-1.5"
                         value={o.paymentStatus}
@@ -488,7 +489,7 @@ export default function OrdersPage() {
                       >
                         {ORDER_PAYMENT_STATUSES.map(status => <option key={status} value={status}>{PAYMENT_STATUS_LABEL[status]}</option>)}
                       </select>
-                    ) : <PaymentBadge status={o.paymentStatus} />}
+                    ) : <PaymentBadge status={effectivePaymentStatus(o)} />}
                   </td>
                   <td onClick={e => e.stopPropagation()} className="whitespace-nowrap space-x-1">
                     <button className="btn-ghost btn-sm" onClick={() => setDetailId(o.id)} title="Xem chi tiết"><Eye className="h-3.5 w-3.5" /></button>
@@ -698,9 +699,13 @@ export default function OrdersPage() {
               <div><label className="label">Phí ship (đ, âm = cty trả)</label><input type="number" className="input" value={form.shipFee} onChange={e => setForm(f => ({ ...f, shipFee: Number(e.target.value) }))} /></div>
               <div>
                 <label className="label">Trạng thái thanh toán *</label>
-                <select className="input" value={form.paymentStatus} onChange={e => setForm(f => ({ ...f, paymentStatus: e.target.value as PaymentStatus }))}>
-                  {ORDER_PAYMENT_STATUSES.map(status => <option key={status} value={status}>{PAYMENT_STATUS_LABEL[status]}</option>)}
-                </select>
+                {isGiftOrder(form) ? (
+                  <input className="input bg-gray-50" readOnly value={PAYMENT_STATUS_LABEL.tang} title="Đơn toàn hàng tặng tự hoàn thành, không có phiếu thu" />
+                ) : (
+                  <select className="input" value={form.paymentStatus} onChange={e => setForm(f => ({ ...f, paymentStatus: e.target.value as PaymentStatus }))}>
+                    {ORDER_PAYMENT_STATUSES.map(status => <option key={status} value={status}>{PAYMENT_STATUS_LABEL[status]}</option>)}
+                  </select>
+                )}
               </div>
               <div><label className="label">Ghi chú</label><input className="input" value={form.note || ""} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} /></div>
             </div>
@@ -761,7 +766,7 @@ function OrderDetailModal({ order, onClose }: { order: Order | null; onClose: ()
           <Info label="Khách hàng" value={c?.fullName || "—"} />
           <Info label="Chi nhánh" value={b?.branchName || "—"} />
           <Info label="Sale phụ trách" value={sale?.fullName || "—"} />
-          <Info label="Thanh toán" value={PAYMENT_STATUS_LABEL[order.paymentStatus] || order.paymentStatus} />
+          <Info label="Thanh toán" value={PAYMENT_STATUS_LABEL[effectivePaymentStatus(order)]} />
           <Info label="Phiếu thu" value={receipt ? receipt.receiptCode : "—"} />
           <Info label="Trạng thái" value={order.status === "active" ? "Hoạt động" : `Đã huỷ${order.cancelReason ? " — " + order.cancelReason : ""}`} />
         </div>

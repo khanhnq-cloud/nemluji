@@ -8,7 +8,7 @@ export function PaymentBadge({ status }: { status: string }) {
     da_ck: "badge-green",
     chua_ck: "badge-yellow",
     cong_no: "badge-red",
-    tang: "badge-purple",
+    tang: "badge-green",
   };
   return <span className={map[status] || "badge-gray"}>{PAYMENT_STATUS_LABEL[status] || status}</span>;
 }

@@ -358,7 +358,7 @@ export interface StockPurchase {
   note?: string;
   status: "active" | "cancelled";
   cancelReason?: string;
-  expenseId: string; // phiếu chi đi kèm
+  expenseId?: string; // phiếu chi đi kèm (không có khi giá nhập 0 đ)
   createdBy: string;
   createdAt: string;
 }

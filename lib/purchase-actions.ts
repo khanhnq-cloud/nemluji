@@ -17,33 +17,34 @@ export interface NewStockPurchase {
 export const purchasableProducts = (state: State) =>
   state.products.filter(p => p.isActive && !p.isFactoryOutput);
 
-// Tạo phiếu nhập: cộng tồn Cát Linh + sinh phiếu chi (vào Tổng chi phí)
+// Tạo phiếu nhập: cộng tồn Cát Linh + sinh phiếu chi nếu có tiền (vào Tổng chi phí)
 export function createStockPurchase(state: State, input: NewStockPurchase, actor: Profile): State {
   const product = state.products.find(p => p.id === input.productId);
-  if (!product || !(input.qty > 0) || !(input.unitPrice > 0)) return state;
+  if (!product || !(input.qty > 0) || !(input.unitPrice >= 0)) return state;
 
   const id = newId();
-  const expenseId = newId();
   const qty = +input.qty.toFixed(2);
   const totalCost = Math.round(qty * input.unitPrice);
   const supplier = input.supplier?.trim() || undefined;
   const code = nextSequentialCode("NH", state.stockPurchases.map(p => p.code));
   const createdAt = new Date().toISOString();
+  // Hàng nhận miễn phí (giá 0 đ) → chỉ cộng tồn, không có phiếu chi
+  const expenseId = totalCost > 0 ? newId() : undefined;
 
   const purchase: StockPurchase = {
     id, code, purchaseDate: input.purchaseDate, productId: product.id, qty,
     unitPrice: input.unitPrice, totalCost, paymentMethod: input.paymentMethod, supplier,
     note: input.note?.trim() || undefined, status: "active", expenseId, createdBy: actor.id, createdAt,
   };
-  const expense: Expense = {
+  const expense: Expense | null = expenseId ? {
     id: expenseId, code: nextSequentialCode("PC", state.expenses.map(e => e.code)), date: input.purchaseDate,
     type: "stock_purchase", amount: totalCost, paymentMethod: input.paymentMethod, payee: supplier, refId: id,
     note: `Nhập ${qty} ${product.unit} ${product.name} — ${code}`, createdBy: actor.id, createdAt,
-  };
+  } : null;
   return {
     ...state,
     stockPurchases: [purchase, ...state.stockPurchases],
-    expenses: [expense, ...state.expenses],
+    expenses: expense ? [expense, ...state.expenses] : state.expenses,
     clInventory: adjustInventory(state.clInventory, product.id, qty),
   };
 }

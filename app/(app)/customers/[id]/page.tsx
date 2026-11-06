@@ -10,6 +10,7 @@ import { PaymentBadge, StatusBadge } from "@/components/Badge";
 import SortableHeader, { type SortDirection } from "@/components/SortableHeader";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
+import { effectivePaymentStatus } from "@/lib/cost";
 import { isBranchDue } from "@/lib/forecast";
 import {
   CUSTOMER_GROUP_LABEL,
@@ -25,7 +26,7 @@ import type { Order, PaymentStatus } from "@/types";
 
 type OrderSortColumn = "date" | "code" | "branch" | "products" | "soldQty" | "giftQty" | "revenue" | "ship" | "net" | "payment";
 
-const PAYMENT_FILTERS: PaymentStatus[] = ["cash_done", "da_ck", "chua_ck", "cong_no"];
+const PAYMENT_FILTERS: PaymentStatus[] = ["cash_done", "da_ck", "chua_ck", "cong_no", "tang"];
 
 const soldQtyOf = (order: Order) => order.items.reduce((sum, item) => sum + (item.isGift ? 0 : item.quantity), 0);
 const giftQtyOf = (order: Order) => order.items.reduce((sum, item) => sum + (item.isGift ? item.quantity : 0), 0);
@@ -64,7 +65,7 @@ export default function CustomerDetailPage() {
     const filtered = customerOrders.filter(order => {
       if (from && order.orderDate < from) return false;
       if (to && order.orderDate > to) return false;
-      if (paymentFilter && order.paymentStatus !== paymentFilter) return false;
+      if (paymentFilter && effectivePaymentStatus(order) !== paymentFilter) return false;
       return true;
     });
 
@@ -79,7 +80,7 @@ export default function CustomerDetailPage() {
         case "revenue": return order.revenue;
         case "ship": return order.shipFee;
         case "net": return order.revenueNet;
-        case "payment": return PAYMENT_STATUS_LABEL[order.paymentStatus] || order.paymentStatus;
+        case "payment": return PAYMENT_STATUS_LABEL[effectivePaymentStatus(order)];
       }
     };
 
@@ -251,7 +252,7 @@ export default function CustomerDetailPage() {
                     <td className="text-right whitespace-nowrap">{formatMoney(order.revenue)}</td>
                     <td className="text-right whitespace-nowrap">{formatMoney(order.shipFee)}</td>
                     <td className="text-right font-medium whitespace-nowrap">{formatMoney(order.revenueNet)}</td>
-                    <td><PaymentBadge status={order.paymentStatus} /></td>
+                    <td><PaymentBadge status={effectivePaymentStatus(order)} /></td>
                   </tr>
                 );
               })}

@@ -1,4 +1,4 @@
-import type { OrderItem, Product, Order } from "@/types";
+import type { OrderItem, PaymentStatus, Product, Order } from "@/types";
 import { applyDiscount } from "./discount";
 
 // Tính 1 dòng hàng (Rule 1: hàng tặng → revenue=0, cost vẫn tính theo fix_cost)
@@ -47,6 +47,15 @@ export function calcOrder(opts: {
   const profitNet = revenueNet - cost - saleCommission; // Rule 3
   return { revenue, revenueNet, cost, saleCommission, profitNet, breakdown };
 }
+
+// Đơn tặng = mọi dòng đều là hàng tặng → không thu tiền, hoàn thành ngay, không có phiếu thu.
+export const isGiftOrder = (order: Pick<Order, "items">) =>
+  order.items.length > 0 && order.items.every(item => item.isGift);
+
+// Trạng thái thanh toán để hiển thị / tính toán. Đơn tặng tạo trước khi có quy tắc này
+// vẫn lưu "chua_ck" nên phải suy ra từ dòng hàng thay vì đọc trực tiếp.
+export const effectivePaymentStatus = (order: Order): PaymentStatus =>
+  isGiftOrder(order) ? "tang" : order.paymentStatus;
 
 // Đơn cancelled không tính vào dashboard / lương (Rule 4)
 export const isActiveOrder = (o: Order) => o.status === "active";

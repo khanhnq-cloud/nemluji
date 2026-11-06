@@ -1,4 +1,5 @@
 import type { Expense, Order, Receipt } from "@/types";
+import { effectivePaymentStatus } from "./cost";
 
 export type DateRange = { from: string; to: string };
 
@@ -18,11 +19,9 @@ export function summarizeFinanceRange(
   range: DateRange,
   expenses: Expense[] = [],
 ) {
-  const activeOrders = orders.filter(order =>
-    order.status === "active" &&
-    order.paymentStatus !== "tang" &&
-    inRange(order.orderDate, range)
-  );
+  const rangeOrders = orders.filter(order => order.status === "active" && inRange(order.orderDate, range));
+  // Đơn tặng không có doanh thu / công nợ, nhưng phí ship vẫn là chi phí thật
+  const activeOrders = rangeOrders.filter(order => effectivePaymentStatus(order) !== "tang");
   const approvedReceipts = receipts.filter(receipt =>
     receipt.status === "approved" && inRange(receiptEffectiveDate(receipt), range)
   );
@@ -30,7 +29,7 @@ export function summarizeFinanceRange(
 
   const actualRevenue = approvedReceipts.reduce((sum, receipt) => sum + Number(receipt.amount || 0), 0);
   // Phí ship dương = tiền phải trả cho vận chuyển (âm = cty được bù) → tính phần dương vào chi phí
-  const shippingCost = activeOrders.reduce((sum, order) => sum + Math.max(0, Number(order.shipFee || 0)), 0);
+  const shippingCost = rangeOrders.reduce((sum, order) => sum + Math.max(0, Number(order.shipFee || 0)), 0);
   const expensesTotal = rangeExpenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
   const totalCost = shippingCost + expensesTotal;
 
@@ -45,9 +44,9 @@ export function summarizeFinanceRange(
     longTermDebt: activeOrders
       .filter(order => order.paymentStatus === "cong_no")
       .reduce((sum, order) => sum + Number(order.revenueNet || 0), 0),
-    shipping: activeOrders.reduce((sum, order) => sum + Number(order.shipFee || 0), 0),
+    shipping: rangeOrders.reduce((sum, order) => sum + Number(order.shipFee || 0), 0),
     shippingCost,
-    shippingOrderCount: activeOrders.filter(order => Number(order.shipFee || 0) !== 0).length,
+    shippingOrderCount: rangeOrders.filter(order => Number(order.shipFee || 0) !== 0).length,
     expenses: expensesTotal,
     expenseCount: rangeExpenses.length,
     totalCost,               // Σ phiếu chi + Σ phí ship (phần dương)

@@ -70,6 +70,7 @@ const matrix: Record<Role, Action[]> = {
     "view_orders", "manage_orders",
     "view_receipts",
     "view_debts", "view_leads", "manage_leads",
+    "view_warehouse_hn", "manage_stock_purchase", // sale nhập được hàng mua ngoài
     "view_payroll_self",
   ],
   // Nhân viên Kho Cát Linh: xem được TOÀN BỘ (gồm cả khối Xưởng ở chế độ xem),

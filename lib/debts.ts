@@ -1,4 +1,5 @@
 import type { DebtStatementLineSnapshot, EarlyPaymentDiscountTiming, Order, Product, Receipt } from "@/types";
+import { isGiftOrder } from "./cost";
 
 export type MonthlyOrderDebt = {
   order: Order;
@@ -37,7 +38,7 @@ export function buildMonthlyCustomerDebts(
   const byCustomer = new Map<string, MonthlyOrderDebt[]>();
 
   orders
-    .filter(order => order.status === "active" && order.orderDate.startsWith(periodMonth))
+    .filter(order => order.status === "active" && !isGiftOrder(order) && order.orderDate.startsWith(periodMonth))
     .sort((a, b) => a.orderDate.localeCompare(b.orderDate) || a.orderCode.localeCompare(b.orderCode))
     .forEach(order => {
       const orderReceipts = receiptsByOrder.get(order.id) || [];

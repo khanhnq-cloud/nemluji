@@ -8,6 +8,7 @@ import SortableHeader, { type SortDirection } from "@/components/SortableHeader"
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
+import { isGiftOrder } from "@/lib/cost";
 import { formatDate, formatMoney, todayISO, RECEIPT_STATUS_LABEL } from "@/lib/utils";
 import { CheckCircle2, XCircle, Send, ShieldAlert, RotateCcw } from "lucide-react";
 
@@ -27,9 +28,12 @@ export default function ReceiptsPage() {
   const isSale = user?.role === "sale";
   // Sale chỉ thấy phiếu thu của đơn mình phụ trách
   const visibleReceipts = useMemo(() => {
-    if (!isSale) return state.receipts;
+    // Đơn tặng không có phiếu thu (bỏ qua phiếu 0 đ của đơn tặng tạo trước đây)
+    const giftOrderIds = new Set(state.orders.filter(isGiftOrder).map(o => o.id));
+    const receipts = state.receipts.filter(r => !(r.orderId && giftOrderIds.has(r.orderId)));
+    if (!isSale) return receipts;
     const myOrderIds = new Set(state.orders.filter(o => o.saleId === user?.id).map(o => o.id));
-    return state.receipts.filter(r => r.orderId && myOrderIds.has(r.orderId));
+    return receipts.filter(r => r.orderId && myOrderIds.has(r.orderId));
   }, [state.receipts, state.orders, isSale, user?.id]);
 
   const rows = useMemo(() => {

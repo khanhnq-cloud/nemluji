@@ -1,6 +1,6 @@
 ﻿import type { Order, OrderItem, Receipt, ReceiptStatus, PaymentStatus, Profile } from "@/types";
 import type { State } from "./store";
-import { calcOrder } from "./cost";
+import { calcOrder, isGiftOrder } from "./cost";
 import { recalcBranchForecast } from "./forecast";
 import { nextSequentialCode, newId, todayISO } from "./utils";
 
@@ -52,7 +52,7 @@ export function updateOrderPaymentStatus(
 ): State {
   const order = state.orders.find(item => item.id === orderId);
   const receiptStatus = receiptStatusFor(paymentStatus);
-  if (!order || order.status !== "active" || !receiptStatus) return state;
+  if (!order || order.status !== "active" || !receiptStatus || isGiftOrder(order)) return state;
 
   const orders = state.orders.map(item => item.id === orderId ? { ...item, paymentStatus } : item);
   const paymentMethod = paymentStatus === "cash_done" ? "cash" : "chuyển khoản";
@@ -102,6 +102,8 @@ export interface NewOrderInput {
 export function createOrder(state: State, input: NewOrderInput, actor: Profile): State {
   const calc = calcOrder(input);
   const orderId = newId();
+  // Đơn tặng hoàn thành ngay, không phát sinh phiếu thu
+  const paymentStatus: PaymentStatus = isGiftOrder(input) ? "tang" : input.paymentStatus;
   const order: Order = {
     id: orderId,
     orderCode: nextSequentialCode("DH", state.orders.map(o => o.orderCode)),
@@ -121,7 +123,7 @@ export function createOrder(state: State, input: NewOrderInput, actor: Profile):
     saleCommissionPct: input.saleCommissionPct,
     saleCommission: calc.saleCommission,
     profitNet: calc.profitNet,
-    paymentStatus: input.paymentStatus,
+    paymentStatus,
     status: "active",
     note: input.note,
   };
@@ -130,7 +132,7 @@ export function createOrder(state: State, input: NewOrderInput, actor: Profile):
 
   // Phiếu thu
   let receipts = state.receipts;
-  const rStatus = receiptStatusFor(input.paymentStatus);
+  const rStatus = receiptStatusFor(paymentStatus);
   if (rStatus) {
     const receipt: Receipt = {
       id: newId(),
@@ -138,7 +140,7 @@ export function createOrder(state: State, input: NewOrderInput, actor: Profile):
       orderId,
       customerId: input.customerId,
       amount: calc.revenueNet,
-      paymentMethod: input.paymentStatus === "cash_done" ? "cash" : "chuyển khoản",
+      paymentMethod: paymentStatus === "cash_done" ? "cash" : "chuyển khoản",
       receiptDate: input.orderDate,
       status: rStatus,
       approvedBy: rStatus === "approved" ? ((actor.role === "admin" || actor.role === "superadmin") ? actor.id : "u_admin") : undefined,
