@@ -319,6 +319,7 @@ export interface DestructionLog {
 export type ExpenseType =
   | "destruction"
   | "mck_ship"
+  | "stock_purchase"
   | "factory_extra"
   | "shipping"
   | "materials"
@@ -341,6 +342,25 @@ export interface Expense {
   refId?: string; // id chứng từ gốc (vd destruction log)
   createdBy?: string;
   createdAt?: string;
+}
+
+// Phiếu nhập hàng mua ngoài vào Kho Cát Linh (vd Ram giòn) — theo dõi chi phí nhập
+export interface StockPurchase {
+  id: string;
+  code: string; // NH-2026-000001
+  purchaseDate: string;
+  productId: string;
+  qty: number; // theo đơn vị sản phẩm
+  unitPrice: number; // giá nhập / đơn vị
+  totalCost: number;
+  paymentMethod: ExpensePaymentMethod;
+  supplier?: string;
+  note?: string;
+  status: "active" | "cancelled";
+  cancelReason?: string;
+  expenseId: string; // phiếu chi đi kèm
+  createdBy: string;
+  createdAt: string;
 }
 
 export type TransferDirection = "factory_to_cl" | "cl_to_factory" | "recover_to_cl";

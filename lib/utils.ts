@@ -142,6 +142,7 @@ export const RECEIPT_STATUS_LABEL: Record<string, string> = {
 export const EXPENSE_TYPE_LABEL: Record<string, string> = {
   destruction: "Tiêu hủy thành phẩm",
   mck_ship: "Ship hàng MCK về xưởng",
+  stock_purchase: "Nhập hàng Kho Cát Linh",
   factory_extra: "Chi phí phát sinh xưởng",
   shipping: "Vận chuyển / giao hàng",
   materials: "Nguyên vật liệu",

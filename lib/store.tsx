@@ -4,13 +4,13 @@ import type {
   Profile, Customer, CustomerBranch, Product, Order, Receipt,
   DebtStatement, Lead, Material, ProductionRecipe, ProductionDay,
   StockTransfer, ClInventory, Attendance, PayrollPeriod, RecoveryLog,
-  DestructionLog, NewCustomerCredit, AppSettings, Expense, MckLog,
+  DestructionLog, NewCustomerCredit, AppSettings, Expense, MckLog, StockPurchase,
 } from "@/types";
 import {
   PROFILES, CUSTOMERS, CUSTOMER_BRANCHES, PRODUCTS, ORDERS, RECEIPTS,
   DEBT_STATEMENTS, LEADS, MATERIALS, RECIPES, PRODUCTION_DAYS,
   STOCK_TRANSFERS, CL_INVENTORY, FACTORY_INVENTORY, RECOVER_INVENTORY, RECOVERY_LOGS, DESTRUCTION_LOGS,
-  MCK_LOGS, ATTENDANCE, PAYROLL_PERIODS, NEW_CUSTOMER_CREDITS, DEFAULT_SETTINGS, EXPENSES,
+  MCK_LOGS, STOCK_PURCHASES, ATTENDANCE, PAYROLL_PERIODS, NEW_CUSTOMER_CREDITS, DEFAULT_SETTINGS, EXPENSES,
 } from "./mock-data";
 import { supabase, isSupabaseEnabled } from "./supabase";
 
@@ -34,6 +34,7 @@ export type State = {
   recoveryLogs: RecoveryLog[];
   destructionLogs: DestructionLog[];
   mckLogs: MckLog[];
+  stockPurchases: StockPurchase[];
   attendance: Attendance[];
   payrollPeriods: PayrollPeriod[];
   newCustomerCredits: NewCustomerCredit[];
@@ -68,6 +69,7 @@ const initial: State = {
   recoveryLogs: RECOVERY_LOGS,
   destructionLogs: DESTRUCTION_LOGS,
   mckLogs: MCK_LOGS,
+  stockPurchases: STOCK_PURCHASES,
   attendance: ATTENDANCE,
   payrollPeriods: PAYROLL_PERIODS,
   newCustomerCredits: NEW_CUSTOMER_CREDITS,

@@ -32,6 +32,7 @@ export type Action =
   | "view_financials" // Net Revenue / Net Profit / Cost — CHỈ admin
   | "manage_settings"
   | "manage_users"
+  | "manage_stock_purchase" // nhập hàng mua ngoài vào Kho Cát Linh
   | "adjust_inventory"; // chỉnh tay tồn kho thành phẩm (Xưởng / Cát Linh) — CHỈ admin
 
 const ADMIN_ACTIONS: Action[] = [
@@ -45,7 +46,7 @@ const ADMIN_ACTIONS: Action[] = [
   "view_warehouse_hn",
   "view_payroll", "manage_payroll", "approve_payroll", "view_payroll_self",
   "view_reports", "view_financials", "manage_settings", "manage_users",
-  "adjust_inventory",
+  "adjust_inventory", "manage_stock_purchase",
 ];
 
 const matrix: Record<Role, Action[]> = {
@@ -59,7 +60,7 @@ const matrix: Record<Role, Action[]> = {
     "view_debts", "view_expenses", "manage_expenses", "view_leads", "manage_leads",
     "view_production", "manage_production", "view_materials", "manage_materials",
     "create_transfer", "confirm_transfer_factory", "manage_recovery",
-    "view_warehouse_hn",
+    "view_warehouse_hn", "manage_stock_purchase",
     "view_payroll", "view_payroll_self",
     "view_reports",
   ],
@@ -80,7 +81,7 @@ const matrix: Record<Role, Action[]> = {
     "view_receipts", "create_receipt",
     "view_debts", "view_expenses", "manage_expenses",
     "view_leads",
-    "view_production", "view_materials", "confirm_transfer", "view_warehouse_hn",
+    "view_production", "view_materials", "confirm_transfer", "view_warehouse_hn", "manage_stock_purchase",
     "view_reports",
     "view_payroll_self",
   ],

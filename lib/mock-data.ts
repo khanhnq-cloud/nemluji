@@ -2,7 +2,7 @@
   Profile, Customer, CustomerBranch, Product, Order, Receipt,
   DebtStatement, Lead, Material, ProductionRecipe, ProductionDay,
   StockTransfer, ClInventory, Attendance, PayrollPeriod, RecoveryLog,
-  DestructionLog, NewCustomerCredit, AppSettings, Expense, MckLog,
+  DestructionLog, NewCustomerCredit, AppSettings, Expense, MckLog, StockPurchase,
 } from "@/types";
 
 // ---------- Profiles (users) ----------
@@ -53,6 +53,7 @@ export const EXPENSES: Expense[] = [];
 export const RECOVERY_LOGS: RecoveryLog[] = [];
 export const DESTRUCTION_LOGS: DestructionLog[] = [];
 export const MCK_LOGS: MckLog[] = [];
+export const STOCK_PURCHASES: StockPurchase[] = [];
 export const ATTENDANCE: Attendance[] = [];
 export const PAYROLL_PERIODS: PayrollPeriod[] = [];
 export const NEW_CUSTOMER_CREDITS: NewCustomerCredit[] = [];

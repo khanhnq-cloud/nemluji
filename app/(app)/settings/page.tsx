@@ -53,7 +53,8 @@ export default function SettingsPage() {
     const usedInStock = [...state.factoryInventory, ...state.clInventory].some(i => i.productId === id && i.qtyKg > 0);
     const usedInRecovery = state.recoveryLogs.some(r => r.productId === id);
     const usedInDestruction = state.destructionLogs.some(d => d.productId === id);
-    const isReferenced = usedInOrders || usedInTransfers || usedInStock || usedInRecovery || usedInDestruction;
+    const usedInPurchases = state.stockPurchases.some(p => p.productId === id);
+    const isReferenced = usedInOrders || usedInTransfers || usedInStock || usedInRecovery || usedInDestruction || usedInPurchases;
     if (isReferenced) {
       if (!confirm("Sản phẩm này đang được sử dụng trong đơn hàng / tồn kho. Chuyển sang trạng thái \"Ngưng\" thay vì xóa?")) return;
       update(s => ({ ...s, products: s.products.map(p => p.id === id ? { ...p, isActive: false } : p) }));
