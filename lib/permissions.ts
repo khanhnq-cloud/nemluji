@@ -59,7 +59,7 @@ const matrix: Record<Role, Action[]> = {
     "view_receipts",
     "view_debts", "view_expenses", "manage_expenses", "view_leads", "manage_leads",
     "view_production", "manage_production", "view_materials", "manage_materials",
-    "create_transfer", "confirm_transfer_factory", "manage_recovery",
+    "create_transfer", "confirm_transfer", "confirm_transfer_factory", "manage_recovery",
     "view_warehouse_hn", "manage_stock_purchase",
     "view_payroll", "view_payroll_self",
     "view_reports",
@@ -71,6 +71,9 @@ const matrix: Record<Role, Action[]> = {
     "view_receipts",
     "view_debts", "view_leads", "manage_leads",
     "view_warehouse_hn", "manage_stock_purchase", // sale nhập được hàng mua ngoài
+    // Quản lý xưởng + phiếu chuyển kho (giá thành/cost vẫn chỉ admin thấy)
+    "view_production", "manage_production", "view_materials", "manage_materials",
+    "create_transfer", "confirm_transfer", "confirm_transfer_factory", "manage_recovery",
     "view_payroll_self",
   ],
   // Nhân viên Kho Cát Linh: xem được TOÀN BỘ (gồm cả khối Xưởng ở chế độ xem),

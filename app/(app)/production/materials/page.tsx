@@ -56,7 +56,7 @@ export default function MaterialsPage() {
         <StatCard label="NVL sắp hết" value={lowCount} hint={`< ${state.settings.nvlWarningDays} ngày`} tone={lowCount ? "bad" : "default"} />
         <div className="card p-3">
           <div className="text-xs text-gray-500">Số mẻ dự kiến / ngày</div>
-          <input type="number" min="0" step="0.5" className="input mt-1" value={plannedBatches}
+          <input type="number" min="0" step="0.5" className="input mt-1" value={plannedBatches} disabled={!can(user?.role, "manage_settings")}
             onChange={e => setPlanned(Number(e.target.value))} aria-label="Số mẻ dự kiến mỗi ngày" />
           <div className="text-xs text-gray-400 mt-1">Đổi để tính lại "còn dùng được"</div>
         </div>

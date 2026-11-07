@@ -16,6 +16,7 @@ export default function RecoveryPage() {
   const { user } = useAuth();
   const canManage = can(user?.role, "manage_recovery");
   const showFin = can(user?.role, "view_financials"); // fix_cost — chỉ admin
+  const showExpense = can(user?.role, "view_expenses"); // số tiền tiêu huỷ suy ra được fix_cost
   const [tab, setTab] = useState<"recover" | "destroy">("recover");
 
   const [df, setDf] = useState({ logDate: todayISO(), productId: state.products[0]?.id || "", warehouse: "factory" as "factory" | "cl", qtyKg: 0, reason: "" });
@@ -119,7 +120,7 @@ export default function RecoveryPage() {
         <StatCard label="MCK chờ recover" value={mckToRecover.length} hint={`${mckInTransit.length} đang trên đường`} tone={mckToRecover.length ? "warn" : "default"} />
         <StatCard label="Tồn kho Recover" value={formatKg(recoverStockTotal)} tone={recoverStockTotal ? "good" : "default"} />
         <StatCard label="Đã chuyển về CL (tháng)" value={formatKg(returnedThisMonth)} />
-        <StatCard label="Tổng chi tiêu huỷ" value={formatMoney(totalDestroyExpense)} tone={totalDestroyExpense ? "bad" : "default"} />
+        {showExpense && <StatCard label="Tổng chi tiêu huỷ" value={formatMoney(totalDestroyExpense)} tone={totalDestroyExpense ? "bad" : "default"} />}
       </div>
 
       <div className="flex gap-2 border-b border-gray-200">
@@ -223,7 +224,7 @@ export default function RecoveryPage() {
           </div>}
           <div className="card overflow-x-auto">
             <table className="table-base">
-              <thead><tr><th>Ngày</th><th>Kho</th><th>Sản phẩm</th><th className="text-right">SL (kg)</th>{showFin && <th className="text-right">Fix cost</th>}<th className="text-right">Phiếu chi</th><th>Lý do</th></tr></thead>
+              <thead><tr><th>Ngày</th><th>Kho</th><th>Sản phẩm</th><th className="text-right">SL (kg)</th>{showFin && <th className="text-right">Fix cost</th>}{showExpense && <th className="text-right">Phiếu chi</th>}<th>Lý do</th></tr></thead>
               <tbody>
                 {state.destructionLogs.map(l => {
                   const exp = state.expenses.find(e => e.id === l.expenseId);
@@ -234,7 +235,7 @@ export default function RecoveryPage() {
                       <td>{prodName(l.productId)}</td>
                       <td className="text-right text-red-600">−{formatKg(l.qtyKg)}</td>
                       {showFin && <td className="text-right">{formatMoney(l.unitCost)}</td>}
-                      <td className="text-right font-medium text-red-600">{formatMoney(l.totalLoss)}<div className="text-xs text-gray-400">{exp?.code}</div></td>
+                      {showExpense && <td className="text-right font-medium text-red-600">{formatMoney(l.totalLoss)}<div className="text-xs text-gray-400">{exp?.code}</div></td>}
                       <td>{l.reason}</td>
                     </tr>
                   );
