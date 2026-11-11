@@ -129,6 +129,7 @@ export const PAYMENT_STATUS_LABEL: Record<string, string> = {
   chua_ck: "Chưa CK",
   cong_no: "Công nợ",
   tang: "Hoàn thành (tặng)",
+  bu_hang: "Bù hàng",
 };
 
 export const RECEIPT_STATUS_LABEL: Record<string, string> = {

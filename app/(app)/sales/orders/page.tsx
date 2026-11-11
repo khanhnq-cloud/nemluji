@@ -8,7 +8,10 @@ import SortableHeader, { type SortDirection } from "@/components/SortableHeader"
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { calcOrder, calcOrderItem, effectivePaymentStatus, isGiftOrder } from "@/lib/cost";
+import {
+  calcOrder, calcOrderItem, companyPaidShipOf, effectivePaymentStatus, isFreeOrder, isGiftOrder,
+  shipLinesOf, sumShipLines, zeroRevenueItems,
+} from "@/lib/cost";
 import { createOrder, updateOrderPaymentStatus, updateOrderShipFee } from "@/lib/order-actions";
 import { adjustInventory, invQty, totalQty } from "@/lib/inventory";
 import { recalcBranchForecast } from "@/lib/forecast";
@@ -21,9 +24,15 @@ import { Plus, Trash2, X, Gift, Eye, Download, Warehouse, UserPlus, Filter, Hand
 import MckModal from "@/components/MckModal";
 import ExpenseModal from "@/components/ExpenseModal";
 import { summarizeFinanceDay } from "@/lib/finance";
-import type { Customer, CustomerBranch, CustomerGroup, Order, OrderItem, PaymentStatus } from "@/types";
+import type { Customer, CustomerBranch, CustomerGroup, Order, OrderItem, PaymentStatus, ShipFeeLine } from "@/types";
 
+// Trạng thái đổi được sau khi tạo đơn (bù hàng chỉ chọn lúc tạo vì đổi doanh thu của đơn)
 const ORDER_PAYMENT_STATUSES: PaymentStatus[] = ["cash_done", "da_ck", "chua_ck", "cong_no"];
+const CREATE_PAYMENT_STATUSES: PaymentStatus[] = [...ORDER_PAYMENT_STATUSES, "bu_hang"];
+const SHIP_LINE_LABELS = ["Phí ship", "Phí ship 2 (cước xe riêng…)"];
+const blankShipLines = (): ShipFeeLine[] => SHIP_LINE_LABELS.map(() => ({ amount: 0, companyPaid: false }));
+// Ô số: để trống thay vì hiện số 0 → xoá được hết, gõ thẳng giá trị mới
+const numValue = (value: number) => (value ? value : "");
 
 type OrderSortColumn = "date" | "code" | "customer" | "sale" | "soldQty" | "giftQty" | "revenue" | "ship" | "payment";
 
@@ -97,7 +106,7 @@ export default function OrdersPage() {
   };
   type Form = {
     orderDate: string; customerId: string; saleId: string;
-    items: OrderItem[]; shipFee: number; quantityDiscountPct: number;
+    items: OrderItem[]; shipFees: ShipFeeLine[]; quantityDiscountPct: number;
     paymentStatus: PaymentStatus; note?: string;
   };
   const blank = (): Form => ({
@@ -105,11 +114,17 @@ export default function OrdersPage() {
     customerId: "",
     saleId: isSale ? user!.id : "",
     items: [newItem()],
-    shipFee: 0,
-    quantityDiscountPct: 10,
+    shipFees: blankShipLines(),
+    quantityDiscountPct: 0,
     paymentStatus: "chua_ck",
   });
+  const setShipLine = (index: number, patch: Partial<ShipFeeLine>) => setForm(f => ({
+    ...f,
+    shipFees: f.shipFees.map((line, i) => (i === index ? { ...line, ...patch } : line)),
+  }));
   const [form, setForm] = useState<Form>(blank());
+  const formShipTotal = sumShipLines(form.shipFees);
+  const formIsCompensation = form.paymentStatus === "bu_hang";
 
   const resetForm = () => {
     setForm(blank());
@@ -199,10 +214,21 @@ export default function OrdersPage() {
     can(user?.role, "manage_orders") &&
     localDateISO(order.createdAt) === todayISO();
 
-  const saveShipFee = (orderId: string, value: string) => {
-    const shipFee = Number(value);
-    if (!Number.isFinite(shipFee)) return;
-    update(current => updateOrderShipFee(current, orderId, shipFee));
+  // Sửa 1 dòng ship trong bảng (dòng index), giữ nguyên dòng còn lại
+  const saveShipFee = (order: Order, index: number, value: string) => {
+    const amount = Number(value || 0);
+    if (!Number.isFinite(amount)) return;
+    const lines = [...shipLinesOf(order)];
+    while (lines.length < SHIP_LINE_LABELS.length) lines.push({ amount: 0, companyPaid: false });
+    if (Number(lines[index].amount || 0) === amount) return;
+    lines[index] = { ...lines[index], amount };
+    update(current => updateOrderShipFee(current, order.id, lines));
+  };
+  const toggleShipCompanyPaid = (order: Order, index: number) => {
+    const lines = [...shipLinesOf(order)];
+    if (!lines[index]) return;
+    lines[index] = { ...lines[index], companyPaid: !lines[index].companyPaid };
+    update(current => updateOrderShipFee(current, order.id, lines));
   };
 
   const savePaymentStatus = (orderId: string, paymentStatus: PaymentStatus) => {
@@ -214,8 +240,8 @@ export default function OrdersPage() {
   };
 
   const calc = useMemo(() => calcOrder({
-    items: form.items,
-    shipFee: form.shipFee,
+    items: form.paymentStatus === "bu_hang" ? zeroRevenueItems(form.items) : form.items,
+    shipFee: sumShipLines(form.shipFees),
     discountSpecial: 0,
     discountMonthlyPct: form.quantityDiscountPct,
     discountEarlyPayPct: 0,
@@ -306,7 +332,8 @@ export default function OrdersPage() {
         return;
       }
     }
-    if (calc.cost > calc.revenueNet && !isGiftOrder(form)) {
+    if (form.shipFees.some(line => !Number.isFinite(Number(line.amount)))) { alert("Phí ship không hợp lệ"); return; }
+    if (calc.cost > calc.revenueNet && !isFreeOrder(form)) {
       if (!confirm("⚠️ Cost > Net Revenue (đơn lỗ). Vẫn lưu?")) return;
     }
     const pct = state.profiles.find(p => p.id === form.saleId)?.commissionPct ?? state.settings.defaultCommissionPct;
@@ -325,7 +352,7 @@ export default function OrdersPage() {
   const cancelOrder = (id: string) => {
     // Đơn đã có phiếu thu được duyệt (tiền đã về) → phải Huỷ duyệt ở Phiếu thu trước
     const target = state.orders.find(o => o.id === id);
-    if (target && !isGiftOrder(target) && state.receipts.some(r => r.orderId === id && r.status === "approved")) {
+    if (target && !isFreeOrder(target) && state.receipts.some(r => r.orderId === id && r.status === "approved")) {
       alert("Đơn đã có phiếu thu được duyệt. Admin cần Huỷ duyệt phiếu thu trước khi huỷ đơn.");
       return;
     }
@@ -334,7 +361,7 @@ export default function OrdersPage() {
     update(s => {
       const order = s.orders.find(o => o.id === id);
       if (!order || order.status === "cancelled") return s;
-      if (!isGiftOrder(order) && s.receipts.some(r => r.orderId === id && r.status === "approved")) return s;
+      if (!isFreeOrder(order) && s.receipts.some(r => r.orderId === id && r.status === "approved")) return s;
       const orders = s.orders.map(o => o.id === id ? { ...o, status: "cancelled" as const, cancelReason: reason } : o);
       // Trả hàng về kho Cát Linh (lúc tạo đơn đã trừ cả hàng tặng)
       let clInventory = s.clInventory;
@@ -357,7 +384,7 @@ export default function OrdersPage() {
   // Xuất Excel (CSV UTF-8 BOM, mở được bằng Excel) — đủ cột gồm net/cost/profit
   const exportExcel = () => {
     // Net Revenue / Cost / Profit chỉ xuất khi là admin
-    const headers = ["Mã đơn", "Ngày", "Giờ tạo", "Khách", "Sale", "SL", "SL tặng", "Revenue", "Ship",
+    const headers = ["Mã đơn", "Ngày", "Giờ tạo", "Khách", "Sale", "SL", "SL tặng", "Revenue", "Ship", "Ship cty thanh toán",
       ...(showFin ? ["Net Revenue", "Cost", "Hoa hồng", "Profit"] : []),
       "Thanh toán", "Trạng thái"];
     const esc = (v: any) => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
@@ -367,7 +394,7 @@ export default function OrdersPage() {
       const sl = state.profiles.find(x => x.id === o.saleId);
       lines.push([
         o.orderCode, formatDate(o.orderDate), formatTime(o.createdAt), c?.fullName, sl?.fullName,
-        soldQtyOf(o), giftQtyOf(o), o.revenue, o.shipFee,
+        soldQtyOf(o), giftQtyOf(o), o.revenue, o.shipFee, companyPaidShipOf(o),
         ...(showFin ? [o.revenueNet, o.cost, o.saleCommission, o.profitNet] : []),
         PAYMENT_STATUS_LABEL[effectivePaymentStatus(o)], o.status === "active" ? "Hoạt động" : "Đã huỷ",
       ].map(esc).join(","));
@@ -431,7 +458,7 @@ export default function OrdersPage() {
         </select>
         <select className="input w-40" value={fPay} onChange={e => setFPay(e.target.value)}>
           <option value="">Tất cả TT</option>
-          {[...ORDER_PAYMENT_STATUSES, "tang" as const].map(status => <option key={status} value={status}>{PAYMENT_STATUS_LABEL[status]}</option>)}
+          {[...CREATE_PAYMENT_STATUSES, "tang" as const].map(status => <option key={status} value={status}>{PAYMENT_STATUS_LABEL[status]}</option>)}
         </select>
       </div>
 
@@ -467,19 +494,36 @@ export default function OrdersPage() {
                   <td className="text-right">{formatMoney(o.revenue)}</td>
                   <td className="text-right" onClick={event => event.stopPropagation()}>
                     {canEditOrderToday(o) ? (
-                      <input
-                        type="number"
-                        className="input w-28 py-1.5 text-right ml-auto"
-                        defaultValue={o.shipFee}
-                        aria-label={`Phí ship ${o.orderCode}`}
-                        title="Được sửa đến hết ngày tạo đơn"
-                        onBlur={event => saveShipFee(o.id, event.currentTarget.value)}
-                        onKeyDown={event => { if (event.key === "Enter") event.currentTarget.blur(); }}
-                      />
-                    ) : formatMoney(o.shipFee)}
+                      <div className="space-y-1">
+                        {SHIP_LINE_LABELS.map((label, index) => {
+                          const line = shipLinesOf(o)[index];
+                          return (
+                            <div key={`${o.id}-${index}-${line?.amount ?? 0}`} className="flex items-center justify-end gap-1">
+                              <input
+                                type="number"
+                                className="input w-28 py-1.5 text-right"
+                                defaultValue={line?.amount || ""}
+                                placeholder={index === 0 ? "Ship" : "Ship 2"}
+                                aria-label={`${label} ${o.orderCode}`}
+                                title="Được sửa đến hết ngày tạo đơn"
+                                onBlur={event => saveShipFee(o, index, event.currentTarget.value)}
+                                onKeyDown={event => { if (event.key === "Enter") event.currentTarget.blur(); }}
+                              />
+                              <button
+                                type="button"
+                                className={`text-[10px] leading-tight px-1 py-0.5 rounded border ${line?.companyPaid ? "bg-blue-600 text-white border-blue-600" : "text-gray-400 border-gray-200"} disabled:opacity-40`}
+                                disabled={!line?.amount}
+                                onClick={() => toggleShipCompanyPaid(o, index)}
+                                title="Công ty thanh toán (qua tài khoản ngân hàng công ty)"
+                              >Cty TT</button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : <ShipCell order={o} />}
                   </td>
                   <td onClick={event => event.stopPropagation()}>
-                    {canEditOrderToday(o) && !isGiftOrder(o) ? (
+                    {canEditOrderToday(o) && !isFreeOrder(o) ? (
                       <select
                         className="input min-w-32 py-1.5"
                         value={o.paymentStatus}
@@ -668,7 +712,7 @@ export default function OrdersPage() {
                           <Gift className="h-4 w-4 mx-auto" />
                         </button>
                       </td>
-                      <td className="text-right">{formatMoney(it.lineRevenue)}</td>
+                      <td className="text-right">{formatMoney(formIsCompensation ? 0 : it.lineRevenue)}</td>
                       {showFin && <td className="text-right text-gray-500">{formatMoney(it.lineCost)}</td>}
                       <td><button className="btn-ghost btn-sm text-red-600" onClick={() => removeItem(it.id)}><Trash2 className="h-3.5 w-3.5" /></button></td>
                     </tr>
@@ -691,23 +735,58 @@ export default function OrdersPage() {
                   max="100"
                   step="0.1"
                   className="input"
-                  value={form.quantityDiscountPct}
-                  onChange={e => setForm(f => ({ ...f, quantityDiscountPct: Number(e.target.value) }))}
+                  placeholder="0"
+                  value={numValue(form.quantityDiscountPct)}
+                  onChange={e => setForm(f => ({ ...f, quantityDiscountPct: Number(e.target.value || 0) }))}
                   aria-label="Chiết khấu số lượng"
                 />
               </div>
-              <div><label className="label">Phí ship (đ, âm = cty trả)</label><input type="number" className="input" value={form.shipFee} onChange={e => setForm(f => ({ ...f, shipFee: Number(e.target.value) }))} /></div>
               <div>
                 <label className="label">Trạng thái thanh toán *</label>
-                {isGiftOrder(form) ? (
+                {isGiftOrder(form) && !formIsCompensation ? (
                   <input className="input bg-gray-50" readOnly value={PAYMENT_STATUS_LABEL.tang} title="Đơn toàn hàng tặng tự hoàn thành, không có phiếu thu" />
                 ) : (
                   <select className="input" value={form.paymentStatus} onChange={e => setForm(f => ({ ...f, paymentStatus: e.target.value as PaymentStatus }))}>
-                    {ORDER_PAYMENT_STATUSES.map(status => <option key={status} value={status}>{PAYMENT_STATUS_LABEL[status]}</option>)}
+                    {CREATE_PAYMENT_STATUSES.map(status => <option key={status} value={status}>{PAYMENT_STATUS_LABEL[status]}</option>)}
                   </select>
                 )}
               </div>
-              <div><label className="label">Ghi chú</label><input className="input" value={form.note || ""} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} /></div>
+              <div className="sm:col-span-2"><label className="label">Ghi chú</label><input className="input" value={form.note || ""} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} /></div>
+            </div>
+            {formIsCompensation && (
+              <div className="mt-2 text-xs text-purple-700 bg-purple-50 border border-purple-200 rounded-md px-3 py-2">
+                Đơn bù hàng: không tính tiền (doanh thu = 0, không sinh phiếu thu / công nợ), vẫn trừ số lượng trong Kho Cát Linh như đơn thường.
+              </div>
+            )}
+
+            <div className="grid sm:grid-cols-2 gap-3 mt-3">
+              {SHIP_LINE_LABELS.map((label, index) => {
+                const line = form.shipFees[index];
+                return (
+                  <div key={label}>
+                    <label className="label">{label} (đ)</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        className="input min-w-0"
+                        placeholder="0"
+                        value={numValue(line.amount)}
+                        onChange={e => setShipLine(index, { amount: Number(e.target.value || 0) })}
+                        aria-label={label}
+                      />
+                      <button
+                        type="button"
+                        className={`shrink-0 whitespace-nowrap rounded-md border px-3 text-sm font-medium ${line.companyPaid ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}
+                        aria-pressed={line.companyPaid}
+                        onClick={() => setShipLine(index, { companyPaid: !line.companyPaid })}
+                        title="Phí ship này thanh toán qua tài khoản ngân hàng công ty"
+                      >
+                        {line.companyPaid ? "✓ " : ""}Công ty thanh toán
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -716,7 +795,10 @@ export default function OrdersPage() {
             <Row label="Subtotal (doanh thu hàng bán)" value={formatMoney(calc.breakdown.subtotal)} />
             <Row label={`− Chiết khấu số lượng (${formatNumber(form.quantityDiscountPct, 2)}%)`} value={formatMoney(calc.breakdown.subtotal - calc.breakdown.afterMonthly)} />
             <Row label="Sau chiết khấu số lượng" value={formatMoney(calc.breakdown.afterMonthly)} />
-            <Row label="− Phí ship" value={formatMoney(form.shipFee)} />
+            <Row label="− Phí ship (tổng)" value={formatMoney(formShipTotal)} />
+            {form.shipFees.some(line => line.companyPaid && line.amount) && (
+              <Row label="  trong đó công ty thanh toán" value={formatMoney(sumShipLines(form.shipFees.filter(line => line.companyPaid)))} className="text-blue-700" />
+            )}
             {showFin && (
               <>
                 <div className="border-t border-gray-200 my-1" />
@@ -728,10 +810,23 @@ export default function OrdersPage() {
             )}
           </div>
           <div className="text-xs text-gray-500">
-            Lưu đơn sẽ tự sinh phiếu thu: Cash done → đã duyệt; đã CK → chờ Admin duyệt; chưa CK/công nợ → chờ. Đồng thời trừ tồn kho CL và cập nhật dự báo ngày lấy tiếp.
+            Lưu đơn sẽ tự sinh phiếu thu: Cash done → đã duyệt; đã CK → chờ Admin duyệt; chưa CK/công nợ → chờ; bù hàng → không có phiếu thu. Đồng thời trừ tồn kho CL và cập nhật dự báo ngày lấy tiếp.
           </div>
         </div>
       </Modal>
+    </div>
+  );
+}
+
+// Ô ship ở bảng (chế độ xem): tổng + đánh dấu phần công ty thanh toán
+function ShipCell({ order }: { order: Order }) {
+  const lines = shipLinesOf(order);
+  const companyPaid = companyPaidShipOf(order);
+  return (
+    <div>
+      <div>{formatMoney(order.shipFee)}</div>
+      {lines.length > 1 && <div className="text-xs text-gray-500">{lines.map(line => formatMoney(line.amount)).join(" + ")}</div>}
+      {companyPaid !== 0 && <div className="text-xs text-blue-700">Cty TT {formatMoney(companyPaid)}</div>}
     </div>
   );
 }
@@ -798,7 +893,14 @@ function OrderDetailModal({ order, onClose }: { order: Order | null; onClose: ()
         <div className="bg-gray-50 rounded-md p-3 text-sm space-y-1">
           <Row label="Revenue (doanh thu hàng bán)" value={formatMoney(order.revenue)} />
           <Row label={`− Chiết khấu số lượng (${formatNumber(order.discountMonthlyPct || 0, 2)}%)`} value={formatMoney(Math.round(Math.max(0, order.revenue - Number(order.discountSpecial || 0)) * (order.discountMonthlyPct || 0) / 100))} />
-          <Row label="− Phí ship" value={formatMoney(order.shipFee)} />
+          {shipLinesOf(order).map((line, index) => (
+            <Row
+              key={index}
+              label={`− ${SHIP_LINE_LABELS[index] || `Phí ship ${index + 1}`}${line.companyPaid ? " (công ty thanh toán)" : ""}`}
+              value={formatMoney(line.amount)}
+              className={line.companyPaid ? "text-blue-700" : ""}
+            />
+          ))}
           {showFin ? (
             <>
               <div className="border-t border-gray-200 my-1" />
@@ -837,7 +939,7 @@ function DaySettlement() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
         <div><div className="text-xs text-gray-500">Tiền hàng nhận về</div><div className="font-semibold text-emerald-700">{formatMoney(fin.actualRevenue)}</div><div className="text-xs text-gray-400">Phiếu thu đã duyệt</div></div>
         <div><div className="text-xs text-gray-500">Σ phiếu chi</div><div className="font-semibold text-red-600">{formatMoney(fin.expenses)}</div><div className="text-xs text-gray-400">{fin.expenseCount} phiếu</div></div>
-        <div><div className="text-xs text-gray-500">Σ phí ship</div><div className="font-semibold text-red-600">{formatMoney(fin.shippingCost)}</div><div className="text-xs text-gray-400">{fin.shippingOrderCount} đơn có ship</div></div>
+        <div><div className="text-xs text-gray-500">Σ phí ship</div><div className="font-semibold text-red-600">{formatMoney(fin.shippingCost)}</div><div className="text-xs text-gray-400">{fin.shippingOrderCount} đơn có ship{fin.shippingCompanyPaid ? ` • cty TT ${formatMoney(fin.shippingCompanyPaid)}` : ""}</div></div>
         <div><div className="text-xs text-gray-500">Tổng chi phí</div><div className="font-semibold text-red-600">{formatMoney(fin.totalCost)}</div><div className="text-xs text-gray-400">phiếu chi + ship</div></div>
       </div>
       <div className="border-t border-emerald-200 mt-3 pt-3 flex items-center justify-between">

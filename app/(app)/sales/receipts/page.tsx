@@ -8,7 +8,7 @@ import SortableHeader, { type SortDirection } from "@/components/SortableHeader"
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { isGiftOrder } from "@/lib/cost";
+import { isFreeOrder } from "@/lib/cost";
 import { formatDate, formatMoney, todayISO, RECEIPT_STATUS_LABEL } from "@/lib/utils";
 import { CheckCircle2, XCircle, Send, ShieldAlert, RotateCcw } from "lucide-react";
 
@@ -29,7 +29,7 @@ export default function ReceiptsPage() {
   // Sale chỉ thấy phiếu thu của đơn mình phụ trách
   const visibleReceipts = useMemo(() => {
     // Đơn tặng không có phiếu thu (bỏ qua phiếu 0 đ của đơn tặng tạo trước đây)
-    const giftOrderIds = new Set(state.orders.filter(isGiftOrder).map(o => o.id));
+    const giftOrderIds = new Set(state.orders.filter(isFreeOrder).map(o => o.id));
     const receipts = state.receipts.filter(r => !(r.orderId && giftOrderIds.has(r.orderId)));
     if (!isSale) return receipts;
     const myOrderIds = new Set(state.orders.filter(o => o.saleId === user?.id).map(o => o.id));
@@ -101,7 +101,7 @@ export default function ReceiptsPage() {
         ...s,
         receipts: s.receipts.map(r => r.id === id ? { ...r, status: "approved" as const, approvedBy: user!.id, approvedAt: todayISO() } : r),
         orders: r0.orderId
-          ? s.orders.map(o => o.id === r0.orderId && o.status === "active" && o.paymentStatus !== "tang" ? { ...o, paymentStatus: paid } : o)
+          ? s.orders.map(o => o.id === r0.orderId && o.status === "active" && o.paymentStatus !== "tang" && o.paymentStatus !== "bu_hang" ? { ...o, paymentStatus: paid } : o)
           : s.orders,
       };
     });

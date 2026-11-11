@@ -84,7 +84,14 @@ export interface ProductQty { productId: string; qtyKg: number; }
 // Số lượng NVL theo nguyên liệu (tồn đầu / cuối / nhập thêm trong Sổ Xưởng)
 export interface MaterialQty { materialId: string; qty: number; }
 
-export type PaymentStatus = "cash_done" | "da_ck" | "chua_ck" | "cong_no" | "tang";
+// bu_hang: đơn bù hàng cho khách — không tính tiền (doanh thu 0, không phiếu thu / công nợ), vẫn trừ tồn kho
+export type PaymentStatus = "cash_done" | "da_ck" | "chua_ck" | "cong_no" | "tang" | "bu_hang";
+
+// 1 dòng phí ship của đơn (vd ship Grab + cước xe riêng)
+export interface ShipFeeLine {
+  amount: number;
+  companyPaid: boolean; // true = công ty thanh toán qua tài khoản ngân hàng công ty
+}
 
 export interface OrderItem {
   id: string;
@@ -105,7 +112,8 @@ export interface Order {
   branchId: string;
   saleId: string;
   items: OrderItem[];
-  shipFee: number; // có thể âm
+  shipFee: number; // có thể âm — luôn = tổng shipFees (nếu có)
+  shipFees?: ShipFeeLine[]; // chi tiết tối đa 2 dòng ship; đơn cũ không có → coi như 1 dòng = shipFee
   discountSpecial: number; // VNĐ
   discountMonthlyPct: number; // % chiết khấu số lượng tại đơn hàng
   discountEarlyPayPct: number; // %, mặc định 2
@@ -401,6 +409,9 @@ export interface MckLog {
   destructionId?: string;
   expenseId?: string;
   resolvedQty?: number;    // đã xử lý (hút lại/tiêu huỷ/chuyển)
+  // mck: hàng trong Kho Cát Linh bị mất chân không (đã trừ tồn bán được khi ghi nhận)
+  // return: hàng khách đổi về, cần test rồi mang sang xưởng hút lại (không trừ tồn — đã trừ lúc bán)
+  source?: "mck" | "return"; // mặc định mck (dữ liệu cũ)
   note?: string;
   createdBy: string;
 }

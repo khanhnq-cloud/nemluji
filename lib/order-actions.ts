@@ -1,6 +1,6 @@
-﻿import type { Order, OrderItem, Receipt, ReceiptStatus, PaymentStatus, Profile } from "@/types";
+﻿import type { Order, OrderItem, Receipt, ReceiptStatus, PaymentStatus, Profile, ShipFeeLine } from "@/types";
 import type { State } from "./store";
-import { calcOrder, isGiftOrder } from "./cost";
+import { calcOrder, isFreeOrder, isGiftOrder, sumShipLines, zeroRevenueItems } from "./cost";
 import { recalcBranchForecast } from "./forecast";
 import { nextSequentialCode, newId, todayISO } from "./utils";
 
@@ -12,12 +12,26 @@ export function receiptStatusFor(payment: PaymentStatus): ReceiptStatus | null {
     case "chua_ck":
     case "cong_no": return "pending";
     case "tang": return null;                   // hàng tặng → không sinh phiếu thu
+    case "bu_hang": return null;                // bù hàng → không tính tiền, không phiếu thu
     default: return "pending";
   }
 }
 
-export function updateOrderShipFee(state: State, orderId: string, shipFee: number): State {
+// Làm tròn số tiền, giữ đúng vị trí dòng (ship 1 / ship 2), bỏ các dòng trống ở cuối
+export function normalizeShipLines(lines: ShipFeeLine[]): ShipFeeLine[] {
+  const out = lines.map(line => {
+    const amount = Math.round(Number(line.amount) || 0);
+    return { amount, companyPaid: amount !== 0 && !!line.companyPaid };
+  });
+  while (out.length && out[out.length - 1].amount === 0) out.pop();
+  return out;
+}
+
+// Sửa phí ship (tối đa 2 dòng) — shipFee luôn = tổng các dòng
+export function updateOrderShipFee(state: State, orderId: string, shipFees: ShipFeeLine[]): State {
   const order = state.orders.find(item => item.id === orderId);
+  const lines = normalizeShipLines(shipFees);
+  const shipFee = sumShipLines(lines);
   if (!order || order.status !== "active" || !Number.isFinite(shipFee)) return state;
 
   const calc = calcOrder({
@@ -31,6 +45,7 @@ export function updateOrderShipFee(state: State, orderId: string, shipFee: numbe
   const orders = state.orders.map(item => item.id === orderId ? {
     ...item,
     shipFee,
+    shipFees: lines,
     revenue: calc.revenue,
     revenueNet: calc.revenueNet,
     cost: calc.cost,
@@ -52,7 +67,7 @@ export function updateOrderPaymentStatus(
 ): State {
   const order = state.orders.find(item => item.id === orderId);
   const receiptStatus = receiptStatusFor(paymentStatus);
-  if (!order || order.status !== "active" || !receiptStatus || isGiftOrder(order)) return state;
+  if (!order || order.status !== "active" || !receiptStatus || isFreeOrder(order)) return state;
 
   const orders = state.orders.map(item => item.id === orderId ? { ...item, paymentStatus } : item);
   const paymentMethod = paymentStatus === "cash_done" ? "cash" : "chuyển khoản";
@@ -89,7 +104,7 @@ export interface NewOrderInput {
   branchId: string;
   saleId: string;
   items: OrderItem[];
-  shipFee: number;
+  shipFees: ShipFeeLine[];
   discountSpecial: number;
   discountMonthlyPct: number;
   discountEarlyPayPct: number;
@@ -100,10 +115,15 @@ export interface NewOrderInput {
 
 // Tạo đơn → trả về State mới (insert order + receipt, update forecast, trừ cl_inventory)
 export function createOrder(state: State, input: NewOrderInput, actor: Profile): State {
-  const calc = calcOrder(input);
+  // Bù hàng: không tính tiền (doanh thu dòng = 0) nhưng vẫn trừ tồn kho như đơn thường.
+  // Đơn tặng hoàn thành ngay. Cả hai đều không phát sinh phiếu thu.
+  const paymentStatus: PaymentStatus = input.paymentStatus === "bu_hang" ? "bu_hang"
+    : isGiftOrder(input) ? "tang" : input.paymentStatus;
+  const items = paymentStatus === "bu_hang" ? zeroRevenueItems(input.items) : input.items;
+  const shipFees = normalizeShipLines(input.shipFees);
+  const shipFee = sumShipLines(shipFees);
+  const calc = calcOrder({ ...input, items, shipFee });
   const orderId = newId();
-  // Đơn tặng hoàn thành ngay, không phát sinh phiếu thu
-  const paymentStatus: PaymentStatus = isGiftOrder(input) ? "tang" : input.paymentStatus;
   const order: Order = {
     id: orderId,
     orderCode: nextSequentialCode("DH", state.orders.map(o => o.orderCode)),
@@ -112,8 +132,9 @@ export function createOrder(state: State, input: NewOrderInput, actor: Profile):
     customerId: input.customerId,
     branchId: input.branchId,
     saleId: input.saleId,
-    items: input.items.map(i => ({ ...i, id: i.id || newId() })),
-    shipFee: input.shipFee,
+    items: items.map(i => ({ ...i, id: i.id || newId() })),
+    shipFee,
+    shipFees,
     discountSpecial: input.discountSpecial,
     discountMonthlyPct: input.discountMonthlyPct,
     discountEarlyPayPct: input.discountEarlyPayPct,

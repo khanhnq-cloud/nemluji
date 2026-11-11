@@ -26,7 +26,7 @@ import type { Order, PaymentStatus } from "@/types";
 
 type OrderSortColumn = "date" | "code" | "branch" | "products" | "soldQty" | "giftQty" | "revenue" | "ship" | "net" | "payment";
 
-const PAYMENT_FILTERS: PaymentStatus[] = ["cash_done", "da_ck", "chua_ck", "cong_no", "tang"];
+const PAYMENT_FILTERS: PaymentStatus[] = ["cash_done", "da_ck", "chua_ck", "cong_no", "tang", "bu_hang"];
 
 const soldQtyOf = (order: Order) => order.items.reduce((sum, item) => sum + (item.isGift ? 0 : item.quantity), 0);
 const giftQtyOf = (order: Order) => order.items.reduce((sum, item) => sum + (item.isGift ? item.quantity : 0), 0);

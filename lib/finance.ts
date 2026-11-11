@@ -1,5 +1,5 @@
 import type { Expense, Order, Receipt } from "@/types";
-import { effectivePaymentStatus } from "./cost";
+import { companyPaidShipOf, isFreeOrder } from "./cost";
 
 export type DateRange = { from: string; to: string };
 
@@ -21,7 +21,7 @@ export function summarizeFinanceRange(
 ) {
   const rangeOrders = orders.filter(order => order.status === "active" && inRange(order.orderDate, range));
   // Đơn tặng không có doanh thu / công nợ, nhưng phí ship vẫn là chi phí thật
-  const activeOrders = rangeOrders.filter(order => effectivePaymentStatus(order) !== "tang");
+  const activeOrders = rangeOrders.filter(order => !isFreeOrder(order));
   const approvedReceipts = receipts.filter(receipt =>
     receipt.status === "approved" && inRange(receiptEffectiveDate(receipt), range)
   );
@@ -46,6 +46,8 @@ export function summarizeFinanceRange(
       .reduce((sum, order) => sum + Number(order.revenueNet || 0), 0),
     shipping: rangeOrders.reduce((sum, order) => sum + Number(order.shipFee || 0), 0),
     shippingCost,
+    // Phần ship công ty thanh toán qua tài khoản ngân hàng công ty
+    shippingCompanyPaid: rangeOrders.reduce((sum, order) => sum + Math.max(0, companyPaidShipOf(order)), 0),
     shippingOrderCount: rangeOrders.filter(order => Number(order.shipFee || 0) !== 0).length,
     expenses: expensesTotal,
     expenseCount: rangeExpenses.length,

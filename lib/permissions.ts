@@ -49,6 +49,7 @@ const ADMIN_ACTIONS: Action[] = [
   "adjust_inventory", "manage_stock_purchase",
 ];
 
+// Bảng lương: nhân viên (sale, Kho Cát Linh, xưởng) KHÔNG xem được — kể cả phiếu lương của chính mình.
 const matrix: Record<Role, Action[]> = {
   superadmin: ADMIN_ACTIONS, // toàn quyền như admin (tài khoản vận hành hệ thống)
   admin: ADMIN_ACTIONS,
@@ -74,7 +75,6 @@ const matrix: Record<Role, Action[]> = {
     // Quản lý xưởng + phiếu chuyển kho (giá thành/cost vẫn chỉ admin thấy)
     "view_production", "manage_production", "view_materials", "manage_materials",
     "create_transfer", "confirm_transfer", "confirm_transfer_factory", "manage_recovery",
-    "view_payroll_self",
   ],
   // Nhân viên Kho Cát Linh: xem được TOÀN BỘ (gồm cả khối Xưởng ở chế độ xem),
   // quản lý bán hàng + xác nhận nhận hàng. Không sửa dữ liệu xưởng, không duyệt tiền.
@@ -87,13 +87,11 @@ const matrix: Record<Role, Action[]> = {
     "view_leads",
     "view_production", "view_materials", "confirm_transfer", "view_warehouse_hn", "manage_stock_purchase",
     "view_reports",
-    "view_payroll_self",
   ],
   factory_da: [
     "view_dashboard",
     "view_production", "manage_production", "view_materials",
     "create_transfer", "confirm_transfer_factory", "manage_recovery",
-    "view_payroll_self",
   ],
   accountant: [
     "view_dashboard",
